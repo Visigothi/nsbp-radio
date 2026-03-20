@@ -11,50 +11,66 @@ const FADE_DURATION_MS = 1500
 const FADE_STEPS = 30
 
 export function useCommercialEngine() {
-  const { tokens, player, deviceId, playerState } = useSpotifyStore()
-  const { queued, status, folderId, setStatus, setPlayingFile, clearQueue } =
+  const { tokens, player, deviceId } = useSpotifyStore()
+  const { queued, status, setStatus, setPlayingFile, clearQueue } =
     useCommercialStore()
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const engineBusy = useRef(false)
 
+  // Keep stable refs to avoid stale closures in callbacks
+  const playerRef = useRef(player)
+  const tokensRef = useRef(tokens)
+  const deviceIdRef = useRef(deviceId)
+  const queuedRef = useRef(queued)
+  useEffect(() => { playerRef.current = player }, [player])
+  useEffect(() => { tokensRef.current = tokens }, [tokens])
+  useEffect(() => { deviceIdRef.current = deviceId }, [deviceId])
+  useEffect(() => { queuedRef.current = queued }, [queued])
+
   // Fade Spotify volume in or out via the SDK
   const fadeVolume = useCallback(
     async (from: number, to: number): Promise<void> => {
-      if (!player) return
+      const p = playerRef.current
+      if (!p) return
       const step = (to - from) / FADE_STEPS
       const delay = FADE_DURATION_MS / FADE_STEPS
       let vol = from
       for (let i = 0; i < FADE_STEPS; i++) {
         vol += step
-        player.setVolume(Math.max(0, Math.min(1, vol)))
+        p.setVolume(Math.max(0, Math.min(1, vol)))
         await new Promise((r) => setTimeout(r, delay))
       }
-      player.setVolume(to)
+      p.setVolume(to)
     },
-    [player]
+    []
   )
 
-  const playCommercial = useCallback(
+  const playAnnouncement = useCallback(
     async (mode: "queue" | "interrupt") => {
-      if (!queued || !tokens || !player || !deviceId || engineBusy.current) return
+      const p = playerRef.current
+      const t = tokensRef.current
+      const dId = deviceIdRef.current
+      const q = queuedRef.current
+      if (!q || !t || !p || !dId || engineBusy.current) return
       engineBusy.current = true
 
-      const { file } = queued
+      const { file } = q
       setStatus("playing")
       setPlayingFile(file)
 
-      const capturedPosition = playerState?.position ?? 0
+      // Capture live position for interrupt mode resume
+      let capturedPosition = 0
+      if (mode === "interrupt") {
+        const liveState = await p.getCurrentState()
+        capturedPosition = liveState?.position ?? 0
+      }
 
       try {
         if (mode === "interrupt") {
-          // Fade out then pause
           await fadeVolume(1, 0)
-          await player.pause()
-        } else {
-          // Queue mode: Spotify is already paused (we paused it at song end)
-          // Skip to next so resume starts fresh track
+          await p.pause()
         }
 
         const audioUrl = getDriveAudioProxyUrl(file.id)
@@ -69,29 +85,27 @@ export function useCommercialEngine() {
 
         // Resume Spotify
         if (mode === "interrupt") {
-          // Resume from same position in same track
-          await player.resume()
-          if (capturedPosition > 0 && tokens) {
+          await p.resume()
+          if (capturedPosition > 0) {
             await fetch(
-              `https://api.spotify.com/v1/me/player/seek?position_ms=${capturedPosition}&device_id=${deviceId}`,
+              `https://api.spotify.com/v1/me/player/seek?position_ms=${capturedPosition}&device_id=${dId}`,
               {
                 method: "PUT",
-                headers: { Authorization: `Bearer ${tokens.accessToken}` },
+                headers: { Authorization: `Bearer ${t.accessToken}` },
               }
             )
           }
           await fadeVolume(0, 1)
         } else {
           // Queue mode: skip to next track and resume
-          await skipToNext(tokens.accessToken, deviceId)
-          await player.resume()
+          await skipToNext(t.accessToken, dId)
+          await p.resume()
         }
       } catch (err) {
-        console.error("Commercial playback error:", err)
-        // Try to recover
+        console.error("Announcement playback error:", err)
         try {
-          player.setVolume(1)
-          player.resume()
+          p.setVolume(1)
+          p.resume()
         } catch {}
       } finally {
         audioRef.current = null
@@ -99,10 +113,10 @@ export function useCommercialEngine() {
         clearQueue()
       }
     },
-    [queued, tokens, player, deviceId, playerState, fadeVolume, setStatus, setPlayingFile, clearQueue]
+    [fadeVolume, setStatus, setPlayingFile, clearQueue]
   )
 
-  // Queue mode: poll for song end
+  // Queue mode: poll for song end using live getCurrentState()
   useEffect(() => {
     if (status !== "queued" || !queued || queued.mode !== "queue") {
       if (pollRef.current) {
@@ -113,25 +127,29 @@ export function useCommercialEngine() {
     }
 
     pollRef.current = setInterval(async () => {
-      if (!playerState || playerState.paused || engineBusy.current) return
-      const remaining = playerState.duration - playerState.position
+      if (engineBusy.current) return
+      const p = playerRef.current
+      if (!p) return
+      const liveState = await p.getCurrentState()
+      if (!liveState || liveState.paused) return
+      const remaining = liveState.duration - liveState.position
       if (remaining <= QUEUE_TRIGGER_MS && remaining > 0) {
         if (pollRef.current) clearInterval(pollRef.current)
-        await player?.pause()
-        await playCommercial("queue")
+        await p.pause()
+        await playAnnouncement("queue")
       }
     }, 500)
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
     }
-  }, [status, queued, playerState, player, playCommercial])
+  }, [status, queued, playAnnouncement])
 
   // Interrupt mode: play immediately when queued
   useEffect(() => {
     if (status !== "queued" || !queued || queued.mode !== "interrupt") return
-    playCommercial("interrupt")
-  }, [status, queued, playCommercial])
+    playAnnouncement("interrupt")
+  }, [status, queued, playAnnouncement])
 
   const skipCommercial = useCallback(() => {
     if (audioRef.current) {
@@ -139,10 +157,10 @@ export function useCommercialEngine() {
       audioRef.current.currentTime = 0
     }
     engineBusy.current = false
-    player?.setVolume(1)
-    player?.resume()
+    playerRef.current?.setVolume(1)
+    playerRef.current?.resume()
     clearQueue()
-  }, [player, clearQueue])
+  }, [clearQueue])
 
   return { skipCommercial }
 }
