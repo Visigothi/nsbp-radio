@@ -10,13 +10,12 @@ export default function CommercialPanel() {
   const {
     files,
     folderId,
-    queued,
     status,
     playingFile,
+    queued,
     setFiles,
     setFolderId,
     queueCommercial,
-    clearQueue,
   } = useCommercialStore()
 
   const { skipCommercial } = useCommercialEngine()
@@ -128,56 +127,36 @@ export default function CommercialPanel() {
         </div>
       )}
 
-      {/* Announcement playing banner */}
+      {/* ── Now Playing box ──────────────────────────────────────── */}
       {status === "playing" && playingFile && (
         <div
-          className="rounded-lg px-3 py-2 flex items-center justify-between gap-2"
-          style={{ background: "rgba(255,157,26,0.1)", border: "1px solid rgba(255,157,26,0.4)" }}
+          className="rounded-xl p-3 flex flex-col gap-2"
+          style={{ background: "rgba(255,157,26,0.1)", border: "1px solid rgba(255,157,26,0.45)" }}
         >
-          <div className="flex items-center gap-2">
-            <span
-              className="w-2 h-2 rounded-full animate-pulse shrink-0"
-              style={{ background: "var(--brand-orange)" }}
-            />
-            <span className="text-white text-xs font-medium truncate">
-              Playing: {playingFile.displayName}
-            </span>
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--brand-orange)" }}>
+            Now Playing
+          </p>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className="w-2 h-2 rounded-full animate-pulse shrink-0"
+                style={{ background: "var(--brand-orange)" }}
+              />
+              <span className="text-white text-sm font-medium truncate">
+                {playingFile.displayName}
+              </span>
+            </div>
+            <button
+              onClick={skipCommercial}
+              className="text-xs shrink-0 px-2 py-1 rounded transition-colors hover:text-white"
+              style={{ color: "var(--brand-orange)", border: "1px solid rgba(255,157,26,0.4)" }}
+            >
+              Skip
+            </button>
           </div>
-          <button
-            onClick={skipCommercial}
-            className="text-xs shrink-0 transition-colors hover:text-white"
-            style={{ color: "var(--brand-orange)" }}
-          >
-            Skip
-          </button>
         </div>
       )}
 
-      {/* Queued banner */}
-      {status === "queued" && queued && (
-        <div
-          className="rounded-lg px-3 py-2 flex items-center justify-between gap-2"
-          style={{ background: "rgba(255,157,26,0.07)", border: "1px solid rgba(255,157,26,0.25)" }}
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <span
-              className="w-2 h-2 rounded-full animate-pulse shrink-0"
-              style={{ background: "var(--brand-orange)" }}
-            />
-            <span className="text-zinc-300 text-xs font-medium truncate">
-              Queued: {queued.file.displayName}
-            </span>
-          </div>
-          <button
-            onClick={clearQueue}
-            className="text-xs shrink-0 transition-colors hover:text-white"
-            style={{ color: "var(--brand-orange)" }}
-            title="Remove from queue"
-          >
-            Remove
-          </button>
-        </div>
-      )}
 
       {/* Access denied dialog */}
       {accessDenied && (
@@ -196,8 +175,8 @@ export default function CommercialPanel() {
         </div>
       )}
 
-      {/* File list */}
-      <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0">
+      {/* File list + Closing Time — all in one scrollable area */}
+      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-1.5">
         {loading && <p className="text-zinc-500 text-sm">Loading files...</p>}
         {error && <p className="text-red-400 text-sm">{error}</p>}
         {!loading && !error && !accessDenied && files.length === 0 && (
@@ -216,10 +195,10 @@ export default function CommercialPanel() {
             onInterrupt={() => queueCommercial(file, "interrupt")}
           />
         ))}
-      </div>
 
-      {/* Closing Time — hardcoded daily closing track */}
-      <ClosingTimeSection />
+        {/* Closing Time — hardcoded daily closing track */}
+        <ClosingTimeSection />
+      </div>
     </div>
   )
 }

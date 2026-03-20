@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import Image from "next/image"
 import { useSpotifyStore } from "@/lib/spotify-store"
+import { useCommercialStore } from "@/lib/commercial-store"
 
 const CLOSING_TIME_ID = "1A5V1sxyCLpKJezp75tUXn"
 const CLOSING_TIME_URI = `spotify:track:${CLOSING_TIME_ID}`
@@ -17,7 +18,8 @@ interface TrackInfo {
 }
 
 export default function ClosingTimeSection() {
-  const { tokens, player, deviceId } = useSpotifyStore()
+  const { tokens, player, deviceId, playerState } = useSpotifyStore()
+  const { closingTimeQueued, setClosingTimeQueued, clearQueue, closingTimeRemoved, setClosingTimeRemoved } = useCommercialStore()
   const [track, setTrack] = useState<TrackInfo | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -39,9 +41,28 @@ export default function ClosingTimeSection() {
       .catch(console.error)
   }, [tokens])
 
+  // When Closing Time starts playing:
+  // - If it was queued normally, clear the queued flag (expected play)
+  // - If it was queued then removed, auto-skip it immediately
+  useEffect(() => {
+    if (playerState?.trackUri !== CLOSING_TIME_URI) return
+    if (closingTimeQueued) {
+      setClosingTimeQueued(false)
+    } else if (closingTimeRemoved && tokens && deviceId) {
+      setClosingTimeRemoved(false)
+      fetch(`https://api.spotify.com/v1/me/player/next?device_id=${deviceId}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tokens.accessToken}` },
+      }).catch(console.error)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerState?.trackUri])
+
   const handleQueue = async () => {
-    if (!tokens || !deviceId || busy) return
+    if (!tokens || !deviceId || busy || closingTimeQueued) return
     setBusy(true)
+    // Replace any currently queued announcement
+    clearQueue()
     try {
       await fetch(
         `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(CLOSING_TIME_URI)}&device_id=${deviceId}`,
@@ -50,6 +71,7 @@ export default function ClosingTimeSection() {
           headers: { Authorization: `Bearer ${tokens.accessToken}` },
         }
       )
+      setClosingTimeQueued(true)
     } catch (err) {
       console.error("Closing Time queue error:", err)
     } finally {
@@ -60,6 +82,8 @@ export default function ClosingTimeSection() {
   const handlePlayNow = async () => {
     if (!tokens || !player || !deviceId || busy) return
     setBusy(true)
+    // If it was queued, clear that flag since we're playing it now
+    if (closingTimeQueued) setClosingTimeQueued(false)
     try {
       // Fade out
       const delay = FADE_DURATION_MS / FADE_STEPS
@@ -68,16 +92,20 @@ export default function ClosingTimeSection() {
         await new Promise((r) => setTimeout(r, delay))
       }
 
-      // Play the track
+      // Add Closing Time to the user queue, then skip to it.
+      // This preserves the playlist context so the playlist resumes after Closing Time ends.
       await fetch(
-        `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`,
+        `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(CLOSING_TIME_URI)}&device_id=${deviceId}`,
         {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${tokens.accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ uris: [CLOSING_TIME_URI] }),
+          method: "POST",
+          headers: { Authorization: `Bearer ${tokens.accessToken}` },
+        }
+      )
+      await fetch(
+        `https://api.spotify.com/v1/me/player/next?device_id=${deviceId}`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${tokens.accessToken}` },
         }
       )
 
@@ -129,7 +157,7 @@ export default function ClosingTimeSection() {
           <div className="flex gap-1.5 shrink-0">
             <button
               onClick={handleQueue}
-              disabled={busy}
+              disabled={busy || closingTimeQueued}
               className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               title="Play after current track ends"
             >

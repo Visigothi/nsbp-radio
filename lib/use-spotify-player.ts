@@ -47,6 +47,7 @@ export function useSpotifyPlayer() {
         const track = state.track_window.current_track
         setPlayerState({
           paused: state.paused,
+          shuffle: state.shuffle,
           position: state.position,
           duration: state.duration,
           trackName: track.name,

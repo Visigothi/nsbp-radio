@@ -5,6 +5,7 @@ import { SpotifyTokens } from "./spotify-auth"
 
 export interface PlayerState {
   paused: boolean
+  shuffle: boolean
   position: number
   duration: number
   trackName: string
@@ -21,6 +22,7 @@ export interface QueueTrack {
   artists: string
   explicit: boolean
   albumArt: string
+  duration: number  // ms
 }
 
 interface SpotifyStore {

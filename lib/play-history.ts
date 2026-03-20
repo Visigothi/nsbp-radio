@@ -14,6 +14,7 @@ export interface PlayRecord {
 }
 
 export interface PlayCounts {
+  sixHours: number
   today: number
   threeDays: number
   week: number
@@ -52,12 +53,14 @@ export function getPlayCounts(uri: string): PlayCounts {
   midnightToday.setHours(0, 0, 0, 0)
   const todayCutoff = midnightToday.getTime()
 
+  const sixHourCutoff = now - 6 * 60 * 60 * 1000
   const threeDayCutoff = now - 3 * 24 * 60 * 60 * 1000
   const weekCutoff = now - 7 * 24 * 60 * 60 * 1000
 
   const hits = records.filter((r) => r.uri === uri)
 
   return {
+    sixHours: hits.filter((r) => r.timestamp >= sixHourCutoff).length,
     today: hits.filter((r) => r.timestamp >= todayCutoff).length,
     threeDays: hits.filter((r) => r.timestamp >= threeDayCutoff).length,
     week: hits.filter((r) => r.timestamp >= weekCutoff).length,

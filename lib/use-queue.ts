@@ -23,9 +23,16 @@ export function useQueue() {
         return res.json()
       })
       .then((data) => {
+        // Closing Time is managed separately in the Closing Time section —
+        // exclude it from the generic Up Next list so it doesn't appear there
+        // after being added to the Spotify user queue via Queue / Play Now.
+        const CLOSING_TIME_URI = "spotify:track:1A5V1sxyCLpKJezp75tUXn"
+
         const tracks: QueueTrack[] = (data.queue ?? [])
           // Only show regular tracks, skip episodes/podcasts
           .filter((t: { type: string }) => t.type === "track")
+          // Never show Closing Time in the Up Next list
+          .filter((t: { uri: string }) => t.uri !== CLOSING_TIME_URI)
           .map(
             (t: {
               id: string
@@ -33,6 +40,7 @@ export function useQueue() {
               name: string
               artists: { name: string }[]
               explicit: boolean
+              duration_ms: number
               album: { images: { url: string }[] }
             }) => ({
               id: t.id,
@@ -40,10 +48,17 @@ export function useQueue() {
               name: t.name,
               artists: t.artists.map((a) => a.name).join(", "),
               explicit: t.explicit,
+              duration: t.duration_ms,
               albumArt: t.album.images[2]?.url ?? t.album.images[0]?.url ?? "",
             })
           )
-        setQueue(tracks)
+        // Deduplicate consecutive entries with the same URI — these are loop
+        // artifacts that appear when Spotify has no playlist context (e.g. after
+        // playing a standalone track URI). Keep only the first occurrence.
+        const deduped = tracks.filter(
+          (t, i) => i === 0 || t.uri !== tracks[i - 1].uri
+        )
+        setQueue(deduped)
       })
       .catch((err) => console.error("[use-queue] Failed to fetch queue:", err))
   }, [trackUri, tokens, setQueue])

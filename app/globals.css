@@ -31,6 +31,13 @@ body {
   border-color: rgba(255, 157, 26, 0.45) !important;
 }
 
+/* ── Overplayed alert blink — fires once every 3 s ──────────────────────── */
+@keyframes blink-alert {
+  0%, 12%, 100% { opacity: 1; }
+  6%            { opacity: 0.1; }
+}
+.blink-alert { animation: blink-alert 3s ease-in-out infinite; }
+
 /* ── Animated background contour layers ─────────────────────────────────── */
 
 /* Layer A: white lines drift up-right over 50s */

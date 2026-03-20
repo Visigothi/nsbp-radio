@@ -22,7 +22,16 @@ export default function SpotifyPanel() {
   usePlayHistory()
 
   const { tokens, player, deviceId, playerState, isReady, queue } = useSpotifyStore()
-  const { status: announcementStatus, queued: queuedAnnouncement, queueCommercial, setPendingTrack } = useCommercialStore()
+  const {
+    status: announcementStatus,
+    queued: queuedAnnouncement,
+    closingTimeQueued,
+    queueCommercial,
+    setPendingTrack,
+    clearQueue,
+    setClosingTimeQueued,
+    setClosingTimeRemoved,
+  } = useCommercialStore()
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([])
   const [selectedPlaylist, setSelectedPlaylist] = useState<SpotifyPlaylist | null>(null)
   const [loadingPlaylists, setLoadingPlaylists] = useState(false)
@@ -93,18 +102,29 @@ export default function SpotifyPanel() {
       await new Promise((r) => setTimeout(r, DELAY))
     }
 
-    const body = contextUri
-      ? { context_uri: contextUri, offset: { uri: trackUri }, position_ms: 0 }
-      : { uris: [trackUri] }
+    const headers = {
+      Authorization: `Bearer ${tokens.accessToken}`,
+      "Content-Type": "application/json",
+    }
+    const playUrl = `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`
 
-    await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${tokens.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    })
+    // Try playing within the playlist context so the playlist continues after this track.
+    // If Spotify rejects it (e.g. the track isn't in the playlist), fall back to standalone.
+    let res: Response | null = null
+    if (contextUri) {
+      res = await fetch(playUrl, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ context_uri: contextUri, offset: { uri: trackUri }, position_ms: 0 }),
+      })
+    }
+    if (!contextUri || (res && !res.ok)) {
+      await fetch(playUrl, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ uris: [trackUri] }),
+      })
+    }
 
     for (let i = 0; i <= STEPS; i++) {
       player.setVolume(i / STEPS)
@@ -143,7 +163,7 @@ export default function SpotifyPanel() {
     <div className="flex flex-col gap-4">
       {/* Playlist selector */}
       <div>
-        <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">
+        <label className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-2 block">
           Playlist
         </label>
         {loadingPlaylists ? (
@@ -169,11 +189,13 @@ export default function SpotifyPanel() {
         )}
       </div>
 
-      {/* Now playing card */}
+      {/* Now playing card — compact horizontal layout, ~5% narrower than track list */}
       {playerState ? (
-        <div className="flex flex-col items-center gap-4">
+        <div className="mx-[2.5%]">
+        <div className="flex gap-4 items-center">
+          {/* Album art — 10% larger than before (128 → 141 px) */}
           {playerState.albumArt && (
-            <div className="relative w-40 h-40 rounded-lg overflow-hidden shadow-2xl">
+            <div className="relative w-[141px] h-[141px] rounded-lg overflow-hidden shadow-2xl shrink-0">
               <Image
                 src={playerState.albumArt}
                 alt={playerState.albumName}
@@ -182,52 +204,75 @@ export default function SpotifyPanel() {
               />
             </div>
           )}
-          <div className="text-center">
-            <p className="text-white font-semibold text-lg leading-tight">
-              {playerState.trackName}
-            </p>
-            <p className="text-zinc-400 text-sm mt-0.5">{playerState.artistName}</p>
-            <PlayCountLine uri={playerState.trackUri} />
-          </div>
 
-          {/* Progress bar */}
-          <div className="w-full space-y-1">
-            <div className="w-full bg-zinc-700 rounded-full h-1">
-              <div
-                className="bg-white rounded-full h-1 transition-none"
-                style={{ width: `${progressPct}%` }}
-              />
+          {/* Right column: info + progress + controls */}
+          <div className="flex flex-col flex-1 min-w-0 gap-2">
+            {/* Track info — centred */}
+            <div className="text-center">
+              <p
+                className="font-bold text-lg uppercase leading-tight truncate"
+                style={{ color: "var(--brand-orange)" }}
+              >
+                {playerState.trackName}
+              </p>
+              <p className="text-zinc-300 text-sm mt-0.5 truncate">{playerState.artistName}</p>
+              <PlayCountLine uri={playerState.trackUri} />
             </div>
-            <div className="flex justify-between text-xs text-zinc-500">
-              <span>{formatTime(progress)}</span>
-              <span>{playerState.duration ? formatTime(playerState.duration) : "--:--"}</span>
-            </div>
-          </div>
 
-          {/* Transport controls */}
-          <div className="flex items-center gap-6">
-            <button
-              onClick={() => player?.previousTrack()}
-              className="text-zinc-400 hover:text-white transition-colors"
-              title="Previous"
-            >
-              <PrevIcon />
-            </button>
-            <button
-              onClick={() => player?.togglePlay()}
-              className="w-12 h-12 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 transition-transform"
-              title={playerState.paused ? "Play" : "Pause"}
-            >
-              {playerState.paused ? <PlayIcon /> : <PauseIcon />}
-            </button>
-            <button
-              onClick={() => player?.nextTrack()}
-              className="text-zinc-400 hover:text-white transition-colors"
-              title="Next"
-            >
-              <NextIcon />
-            </button>
+            {/* Progress bar — mt-1 gives breathing room below the play count */}
+            <div className="space-y-1 mt-1">
+              <div className="w-full bg-zinc-700 rounded-full h-1">
+                <div
+                  className="bg-white rounded-full h-1 transition-none"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-zinc-500">
+                <span>{formatTime(progress)}</span>
+                <span>{playerState.duration ? formatTime(playerState.duration) : "--:--"}</span>
+              </div>
+            </div>
+
+            {/* Transport controls — centred */}
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={() => player?.previousTrack()}
+                className="text-zinc-400 hover:text-white transition-colors"
+                title="Previous"
+              >
+                <PrevIcon />
+              </button>
+              <button
+                onClick={() => player?.togglePlay()}
+                className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 transition-transform"
+                title={playerState.paused ? "Play" : "Pause"}
+              >
+                {playerState.paused ? <PlayIcon /> : <PauseIcon />}
+              </button>
+              <button
+                onClick={() => player?.nextTrack()}
+                className="text-zinc-400 hover:text-white transition-colors"
+                title="Next"
+              >
+                <NextIcon />
+              </button>
+              <button
+                onClick={() => {
+                  if (!tokens || !deviceId) return
+                  fetch(
+                    `https://api.spotify.com/v1/me/player/shuffle?state=${!playerState.shuffle}&device_id=${deviceId}`,
+                    { method: "PUT", headers: { Authorization: `Bearer ${tokens.accessToken}` } }
+                  ).catch(console.error)
+                }}
+                className="transition-colors"
+                style={{ color: playerState.shuffle ? "var(--brand-orange)" : "rgb(161,161,170)" }}
+                title={playerState.shuffle ? "Shuffle on" : "Shuffle off"}
+              >
+                <ShuffleIcon />
+              </button>
+            </div>
           </div>
+        </div>
         </div>
       ) : (
         <div className="flex items-center justify-center py-12">
@@ -242,11 +287,49 @@ export default function SpotifyPanel() {
       )}
 
       {/* Up next queue */}
-      {queue.length > 0 && (
+      {(queue.length > 0 || (announcementStatus === "queued" && queuedAnnouncement) || closingTimeQueued) && (
         <div>
-          <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
+          <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-2">
             Up Next
           </h3>
+
+          {/* Queue box — announcement or Closing Time queued */}
+          {((announcementStatus === "queued" && queuedAnnouncement) || closingTimeQueued) && (
+            <div
+              className="rounded-xl p-3 flex flex-col gap-2 mb-2"
+              style={{ background: "rgba(255,157,26,0.07)", border: "1px solid rgba(255,157,26,0.3)" }}
+            >
+              <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--brand-orange)" }}>
+                Queue
+              </p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="w-2 h-2 rounded-full animate-pulse shrink-0"
+                    style={{ background: "var(--brand-orange)" }}
+                  />
+                  <span className="text-zinc-200 text-sm font-medium truncate">
+                    {closingTimeQueued ? "Closing Time" : queuedAnnouncement!.file.displayName}
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    clearQueue()
+                    // If Closing Time was queued, mark it for auto-skip since Spotify's
+                    // API has no way to remove an item from the user queue once added.
+                    if (closingTimeQueued) setClosingTimeRemoved(true)
+                    setClosingTimeQueued(false)
+                  }}
+                  className="text-xs shrink-0 px-2 py-1 rounded transition-colors hover:text-white"
+                  style={{ color: "var(--brand-orange)", border: "1px solid rgba(255,157,26,0.4)" }}
+                  title="Remove from queue"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-1">
             {queue.map((track, i) => (
               <div
@@ -301,6 +384,11 @@ export default function SpotifyPanel() {
                 {!track.explicit && (
                   <PlayCountBadge uri={track.uri} />
                 )}
+
+                {/* Duration — always rightmost */}
+                <span className="shrink-0 text-xs text-zinc-500 tabular-nums">
+                  {formatTime(track.duration)}
+                </span>
               </div>
             ))}
           </div>
@@ -315,6 +403,8 @@ function PlayCountLine({ uri }: { uri: string }) {
   const counts: PlayCounts = getPlayCounts(uri)
   if (counts.week === 0) return null
 
+  // Colour + blink based on 6-hour repeat frequency
+  const overplayed = counts.sixHours > 2
   const todayColor =
     counts.today >= 3
       ? "text-red-400 font-semibold"
@@ -323,9 +413,12 @@ function PlayCountLine({ uri }: { uri: string }) {
       : "text-zinc-500"
 
   return (
-    <div className="flex items-center justify-center gap-2 mt-1.5 text-xs">
+    <div className="flex items-center justify-center gap-2 mt-1 text-xs">
       {counts.today > 0 && (
-        <span className={todayColor} title="Times played today">
+        <span
+          className={`${todayColor} ${overplayed ? "blink-alert" : ""}`}
+          title={overplayed ? `Played ${counts.sixHours}× in the past 6 hours` : "Times played today"}
+        >
           {counts.today}× today
         </span>
       )}
@@ -399,6 +492,14 @@ function NextIcon() {
   return (
     <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
       <path d="M6 18l8.5-6L6 6v12zm2.5-6l6-4.269V16.27L8.5 12zM16 6h2v12h-2z" />
+    </svg>
+  )
+}
+
+function ShuffleIcon() {
+  return (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
     </svg>
   )
 }
