@@ -2,11 +2,15 @@
 
 import dynamic from "next/dynamic"
 import { useCommercialStore } from "@/lib/commercial-store"
+import { useExplicitFilter } from "@/lib/use-explicit-filter"
 
 const SpotifyPanel = dynamic(() => import("./SpotifyPanel"), { ssr: false })
 const CommercialPanel = dynamic(() => import("./CommercialPanel"), { ssr: false })
 
 export default function AppShell() {
+  // Hard-block explicit tracks — runs silently in the background
+  useExplicitFilter()
+
   const status = useCommercialStore((s) => s.status)
   const queued = useCommercialStore((s) => s.queued)
   const clearQueue = useCommercialStore((s) => s.clearQueue)
