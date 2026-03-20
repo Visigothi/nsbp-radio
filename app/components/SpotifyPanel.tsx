@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react"
 import Image from "next/image"
 import { useSpotifyStore } from "@/lib/spotify-store"
 import { useSpotifyPlayer } from "@/lib/use-spotify-player"
+import { useQueue } from "@/lib/use-queue"
 import { initiateSpotifyAuth } from "@/lib/spotify-auth"
 import {
   fetchUserPlaylists,
@@ -14,8 +15,9 @@ import {
 
 export default function SpotifyPanel() {
   useSpotifyPlayer()
+  useQueue()
 
-  const { tokens, player, deviceId, playerState, isReady } = useSpotifyStore()
+  const { tokens, player, deviceId, playerState, isReady, queue } = useSpotifyStore()
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([])
   const [selectedPlaylist, setSelectedPlaylist] = useState<SpotifyPlaylist | null>(null)
   const [loadingPlaylists, setLoadingPlaylists] = useState(false)
@@ -89,7 +91,7 @@ export default function SpotifyPanel() {
   const progressPct = playerState ? (progress / playerState.duration) * 100 : 0
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col gap-4">
       {/* Playlist selector */}
       <div>
         <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">
@@ -120,9 +122,9 @@ export default function SpotifyPanel() {
 
       {/* Now playing card */}
       {playerState ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-4">
+        <div className="flex flex-col items-center gap-4">
           {playerState.albumArt && (
-            <div className="relative w-48 h-48 rounded-lg overflow-hidden shadow-2xl">
+            <div className="relative w-40 h-40 rounded-lg overflow-hidden shadow-2xl">
               <Image
                 src={playerState.albumArt}
                 alt={playerState.albumName}
@@ -178,7 +180,7 @@ export default function SpotifyPanel() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex items-center justify-center py-12">
           {!isReady ? (
             <p className="text-zinc-500 text-sm">Connecting player...</p>
           ) : !selectedPlaylist ? (
@@ -186,6 +188,65 @@ export default function SpotifyPanel() {
           ) : (
             <p className="text-zinc-500 text-sm">Loading...</p>
           )}
+        </div>
+      )}
+
+      {/* Up next queue */}
+      {queue.length > 0 && (
+        <div>
+          <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
+            Up Next
+          </h3>
+          <div className="space-y-1">
+            {queue.map((track, i) => (
+              <div
+                key={`${track.uri}-${i}`}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg ${
+                  track.explicit
+                    ? "opacity-40"
+                    : "bg-zinc-800/40"
+                }`}
+              >
+                {/* Small album art */}
+                {track.albumArt ? (
+                  <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden">
+                    <Image
+                      src={track.albumArt}
+                      alt={track.name}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-8 h-8 rounded shrink-0 bg-zinc-700" />
+                )}
+
+                {/* Track info */}
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={`text-sm leading-tight truncate ${
+                      track.explicit
+                        ? "line-through text-zinc-500"
+                        : "text-white"
+                    }`}
+                  >
+                    {track.name}
+                  </p>
+                  <p className="text-xs text-zinc-500 truncate">{track.artists}</p>
+                </div>
+
+                {/* Explicit badge */}
+                {track.explicit && (
+                  <span
+                    className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded bg-zinc-700 text-zinc-400"
+                    title="Explicit — will be skipped"
+                  >
+                    E
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

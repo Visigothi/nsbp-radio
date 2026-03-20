@@ -14,12 +14,22 @@ export interface PlayerState {
   trackUri: string
 }
 
+export interface QueueTrack {
+  id: string
+  uri: string
+  name: string
+  artists: string
+  explicit: boolean
+  albumArt: string
+}
+
 interface SpotifyStore {
   tokens: SpotifyTokens | null
   player: Spotify.Player | null
   deviceId: string | null
   playerState: PlayerState | null
   isReady: boolean
+  queue: QueueTrack[]
 
   setTokens: (tokens: SpotifyTokens) => void
   clearTokens: () => void
@@ -27,6 +37,7 @@ interface SpotifyStore {
   setDeviceId: (id: string) => void
   setPlayerState: (state: PlayerState | null) => void
   setIsReady: (ready: boolean) => void
+  setQueue: (queue: QueueTrack[]) => void
 }
 
 export const useSpotifyStore = create<SpotifyStore>((set) => ({
@@ -35,11 +46,13 @@ export const useSpotifyStore = create<SpotifyStore>((set) => ({
   deviceId: null,
   playerState: null,
   isReady: false,
+  queue: [],
 
   setTokens: (tokens) => set({ tokens }),
-  clearTokens: () => set({ tokens: null, player: null, deviceId: null, playerState: null, isReady: false }),
+  clearTokens: () => set({ tokens: null, player: null, deviceId: null, playerState: null, isReady: false, queue: [] }),
   setPlayer: (player) => set({ player }),
   setDeviceId: (deviceId) => set({ deviceId }),
   setPlayerState: (playerState) => set({ playerState }),
   setIsReady: (isReady) => set({ isReady }),
+  setQueue: (queue) => set({ queue }),
 }))
