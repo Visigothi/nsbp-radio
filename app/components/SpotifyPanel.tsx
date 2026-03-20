@@ -63,6 +63,42 @@ export default function SpotifyPanel() {
     await playPlaylist(tokens.accessToken, deviceId, `spotify:playlist:${playlist.id}`)
   }
 
+  const handlePlayFromQueue = async (trackUri: string) => {
+    if (!player || !tokens || !deviceId) return
+
+    // Fade out over 1.5s (30 steps × 50ms)
+    const STEPS = 30
+    const DELAY = 1500 / STEPS
+    for (let i = STEPS; i >= 0; i--) {
+      player.setVolume(i / STEPS)
+      await new Promise((r) => setTimeout(r, DELAY))
+    }
+
+    // Play from that track, preserving playlist context if available
+    const body = selectedPlaylist
+      ? {
+          context_uri: `spotify:playlist:${selectedPlaylist.id}`,
+          offset: { uri: trackUri },
+          position_ms: 0,
+        }
+      : { uris: [trackUri] }
+
+    await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${tokens.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+
+    // Fade back in
+    for (let i = 0; i <= STEPS; i++) {
+      player.setVolume(i / STEPS)
+      await new Promise((r) => setTimeout(r, DELAY))
+    }
+  }
+
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000)
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
@@ -201,11 +237,13 @@ export default function SpotifyPanel() {
             {queue.map((track, i) => (
               <div
                 key={`${track.uri}-${i}`}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg ${
+                onClick={() => !track.explicit && handlePlayFromQueue(track.uri)}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                   track.explicit
-                    ? "opacity-40"
-                    : "bg-zinc-800/40"
+                    ? "opacity-40 cursor-default"
+                    : "bg-zinc-800/40 hover:bg-zinc-700/60 cursor-pointer"
                 }`}
+                title={track.explicit ? "Explicit — will be skipped automatically" : "Click to play"}
               >
                 {/* Small album art */}
                 {track.albumArt ? (
