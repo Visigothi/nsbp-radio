@@ -5,6 +5,8 @@ import Image from "next/image"
 import { useSpotifyStore } from "@/lib/spotify-store"
 import { useSpotifyPlayer } from "@/lib/use-spotify-player"
 import { useQueue } from "@/lib/use-queue"
+import { usePlayHistory } from "@/lib/use-play-history"
+import { getPlayCounts, PlayCounts } from "@/lib/play-history"
 import { initiateSpotifyAuth } from "@/lib/spotify-auth"
 import {
   fetchUserPlaylists,
@@ -16,6 +18,7 @@ import {
 export default function SpotifyPanel() {
   useSpotifyPlayer()
   useQueue()
+  usePlayHistory()
 
   const { tokens, player, deviceId, playerState, isReady, queue } = useSpotifyStore()
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([])
@@ -174,6 +177,7 @@ export default function SpotifyPanel() {
               {playerState.trackName}
             </p>
             <p className="text-zinc-400 text-sm mt-0.5">{playerState.artistName}</p>
+            <PlayCountLine uri={playerState.trackUri} />
           </div>
 
           {/* Progress bar */}
@@ -282,12 +286,70 @@ export default function SpotifyPanel() {
                     E
                   </span>
                 )}
+
+                {/* Play count badge */}
+                {!track.explicit && (
+                  <PlayCountBadge uri={track.uri} />
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
     </div>
+  )
+}
+
+/** Small stat line shown below artist name on the now-playing card */
+function PlayCountLine({ uri }: { uri: string }) {
+  const counts: PlayCounts = getPlayCounts(uri)
+  if (counts.week === 0) return null
+
+  const todayColor =
+    counts.today >= 3
+      ? "text-red-400 font-semibold"
+      : counts.today === 2
+      ? "text-amber-400"
+      : "text-zinc-500"
+
+  return (
+    <div className="flex items-center justify-center gap-2 mt-1.5 text-xs">
+      {counts.today > 0 && (
+        <span className={todayColor} title="Times played today">
+          {counts.today}× today
+        </span>
+      )}
+      {counts.today > 0 && counts.week > counts.today && (
+        <span className="text-zinc-600">·</span>
+      )}
+      {counts.week > counts.today && (
+        <span className="text-zinc-500" title="Times played in the past 7 days">
+          {counts.week}× this week
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** Small pill badge shown on queue rows */
+function PlayCountBadge({ uri }: { uri: string }) {
+  const { today } = getPlayCounts(uri)
+  if (today === 0) return null
+
+  const style =
+    today >= 3
+      ? "bg-red-900/60 text-red-300 border border-red-700"
+      : today === 2
+      ? "bg-amber-900/60 text-amber-300 border border-amber-700"
+      : "bg-zinc-700/60 text-zinc-400 border border-zinc-600"
+
+  return (
+    <span
+      className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${style}`}
+      title={`Played ${today}× today`}
+    >
+      {today}×
+    </span>
   )
 }
 
