@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react"
 import Image from "next/image"
 import { useSpotifyStore } from "@/lib/spotify-store"
+import { useCommercialStore } from "@/lib/commercial-store"
 import { useSpotifyPlayer } from "@/lib/use-spotify-player"
 import { useQueue } from "@/lib/use-queue"
 import { usePlayHistory } from "@/lib/use-play-history"
@@ -21,6 +22,7 @@ export default function SpotifyPanel() {
   usePlayHistory()
 
   const { tokens, player, deviceId, playerState, isReady, queue } = useSpotifyStore()
+  const { status: announcementStatus, queued: queuedAnnouncement, queueCommercial, setPendingTrack } = useCommercialStore()
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([])
   const [selectedPlaylist, setSelectedPlaylist] = useState<SpotifyPlaylist | null>(null)
   const [loadingPlaylists, setLoadingPlaylists] = useState(false)
@@ -69,7 +71,21 @@ export default function SpotifyPanel() {
   const handlePlayFromQueue = async (trackUri: string) => {
     if (!player || !tokens || !deviceId) return
 
-    // Fade out over 1.5s (30 steps × 50ms)
+    const contextUri = selectedPlaylist
+      ? `spotify:playlist:${selectedPlaylist.id}`
+      : null
+
+    // If an announcement is queued, play it first, then the selected track
+    if (announcementStatus === "queued" && queuedAnnouncement) {
+      // Store the target track — the engine will play it after the announcement
+      setPendingTrack({ trackUri, contextUri })
+      // Switch announcement to interrupt mode so it plays immediately
+      // (it may have been in "queue" mode waiting for song end)
+      queueCommercial(queuedAnnouncement.file, "interrupt")
+      return
+    }
+
+    // No announcement queued — fade out and play the selected track directly
     const STEPS = 30
     const DELAY = 1500 / STEPS
     for (let i = STEPS; i >= 0; i--) {
@@ -77,13 +93,8 @@ export default function SpotifyPanel() {
       await new Promise((r) => setTimeout(r, DELAY))
     }
 
-    // Play from that track, preserving playlist context if available
-    const body = selectedPlaylist
-      ? {
-          context_uri: `spotify:playlist:${selectedPlaylist.id}`,
-          offset: { uri: trackUri },
-          position_ms: 0,
-        }
+    const body = contextUri
+      ? { context_uri: contextUri, offset: { uri: trackUri }, position_ms: 0 }
       : { uris: [trackUri] }
 
     await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
@@ -95,7 +106,6 @@ export default function SpotifyPanel() {
       body: JSON.stringify(body),
     })
 
-    // Fade back in
     for (let i = 0; i <= STEPS; i++) {
       player.setVolume(i / STEPS)
       await new Promise((r) => setTimeout(r, DELAY))

@@ -12,12 +12,19 @@ export interface QueuedCommercial {
 
 export type CommercialStatus = "idle" | "queued" | "playing"
 
+export interface PendingTrack {
+  trackUri: string
+  contextUri: string | null // playlist context, if known
+}
+
 interface CommercialStore {
   files: DriveFile[]
   folderId: string
   queued: QueuedCommercial | null
   status: CommercialStatus
   playingFile: DriveFile | null
+  /** Track to play after the current announcement finishes */
+  pendingTrack: PendingTrack | null
 
   setFiles: (files: DriveFile[]) => void
   setFolderId: (id: string) => void
@@ -25,6 +32,7 @@ interface CommercialStore {
   clearQueue: () => void
   setStatus: (status: CommercialStatus) => void
   setPlayingFile: (file: DriveFile | null) => void
+  setPendingTrack: (track: PendingTrack | null) => void
 }
 
 const DEFAULT_FOLDER_ID = process.env.NEXT_PUBLIC_DEFAULT_DRIVE_FOLDER_ID ?? ""
@@ -41,6 +49,7 @@ export const useCommercialStore = create<CommercialStore>((set) => ({
   queued: null,
   status: "idle",
   playingFile: null,
+  pendingTrack: null,
 
   setFiles: (files) => set({ files }),
   setFolderId: (folderId) => {
@@ -48,7 +57,8 @@ export const useCommercialStore = create<CommercialStore>((set) => ({
     set({ folderId })
   },
   queueCommercial: (file, mode) => set({ queued: { file, mode }, status: "queued" }),
-  clearQueue: () => set({ queued: null, status: "idle", playingFile: null }),
+  clearQueue: () => set({ queued: null, status: "idle", playingFile: null, pendingTrack: null }),
   setStatus: (status) => set({ status }),
   setPlayingFile: (playingFile) => set({ playingFile }),
+  setPendingTrack: (pendingTrack) => set({ pendingTrack }),
 }))

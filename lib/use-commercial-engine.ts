@@ -12,22 +12,24 @@ const FADE_STEPS = 30
 
 export function useCommercialEngine() {
   const { tokens, player, deviceId } = useSpotifyStore()
-  const { queued, status, setStatus, setPlayingFile, clearQueue } =
+  const { queued, status, setStatus, setPlayingFile, clearQueue, pendingTrack } =
     useCommercialStore()
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const engineBusy = useRef(false)
 
-  // Keep stable refs to avoid stale closures in callbacks
+  // Stable refs to avoid stale closures in async callbacks
   const playerRef = useRef(player)
   const tokensRef = useRef(tokens)
   const deviceIdRef = useRef(deviceId)
   const queuedRef = useRef(queued)
+  const pendingTrackRef = useRef(pendingTrack)
   useEffect(() => { playerRef.current = player }, [player])
   useEffect(() => { tokensRef.current = tokens }, [tokens])
   useEffect(() => { deviceIdRef.current = deviceId }, [deviceId])
   useEffect(() => { queuedRef.current = queued }, [queued])
+  useEffect(() => { pendingTrackRef.current = pendingTrack }, [pendingTrack])
 
   // Fade Spotify volume in or out via the SDK
   const fadeVolume = useCallback(
@@ -60,7 +62,7 @@ export function useCommercialEngine() {
       setStatus("playing")
       setPlayingFile(file)
 
-      // Capture live position for interrupt mode resume
+      // Capture live position so we can resume from the same spot (interrupt only)
       let capturedPosition = 0
       if (mode === "interrupt") {
         const liveState = await p.getCurrentState()
@@ -83,8 +85,34 @@ export function useCommercialEngine() {
           audio.play().catch(reject)
         })
 
-        // Resume Spotify
-        if (mode === "interrupt") {
+        // After announcement: check for a pending user-selected track
+        const pending = pendingTrackRef.current
+
+        if (pending) {
+          // User clicked a queue track while the announcement was waiting —
+          // play that track now instead of resuming the original one.
+          const body = pending.contextUri
+            ? {
+                context_uri: pending.contextUri,
+                offset: { uri: pending.trackUri },
+                position_ms: 0,
+              }
+            : { uris: [pending.trackUri] }
+
+          await fetch(
+            `https://api.spotify.com/v1/me/player/play?device_id=${dId}`,
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${t.accessToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(body),
+            }
+          )
+          await fadeVolume(0, 1)
+        } else if (mode === "interrupt") {
+          // Normal interrupt: resume from the same position in the same track
           await p.resume()
           if (capturedPosition > 0) {
             await fetch(
@@ -110,7 +138,7 @@ export function useCommercialEngine() {
       } finally {
         audioRef.current = null
         engineBusy.current = false
-        clearQueue()
+        clearQueue() // also clears pendingTrack
       }
     },
     [fadeVolume, setStatus, setPlayingFile, clearQueue]
