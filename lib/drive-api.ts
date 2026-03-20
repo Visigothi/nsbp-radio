@@ -5,28 +5,42 @@ export interface DriveFile {
   mimeType: string
 }
 
+export class DriveAccessError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "DriveAccessError"
+  }
+}
+
 export async function fetchDriveFiles(
   folderId: string,
-  apiKey: string
+  accessToken: string
 ): Promise<DriveFile[]> {
   const params = new URLSearchParams({
     q: `'${folderId}' in parents and mimeType='audio/mpeg' and trashed=false`,
     fields: "files(id,name,mimeType)",
-    key: apiKey,
     pageSize: "100",
     orderBy: "name",
   })
 
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?${params}`
+    `https://www.googleapis.com/drive/v3/files?${params}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
   )
+
+  if (res.status === 401 || res.status === 403) {
+    throw new DriveAccessError(
+      "Your Google account doesn't have access to the commercials folder. Contact your administrator."
+    )
+  }
 
   if (!res.ok) {
     const err = await res.text()
     throw new Error(`Drive API error: ${err}`)
   }
 
-  const data: { files: { id: string; name: string; mimeType: string }[] } = await res.json()
+  const data: { files: { id: string; name: string; mimeType: string }[] } =
+    await res.json()
 
   return data.files.map((f) => ({
     id: f.id,
@@ -40,8 +54,13 @@ export async function fetchDriveFiles(
   }))
 }
 
-export function getDriveAudioUrl(fileId: string, apiKey: string): string {
-  return `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${apiKey}`
+/**
+ * Returns a URL that proxies the audio file through our Next.js server.
+ * The browser <audio> element can't send Authorization headers, so the
+ * server-side proxy route adds the Bearer token before hitting Drive.
+ */
+export function getDriveAudioProxyUrl(fileId: string): string {
+  return `/api/drive/audio/${fileId}`
 }
 
 export function extractFolderIdFromUrl(url: string): string | null {

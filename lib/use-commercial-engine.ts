@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from "react"
 import { useSpotifyStore } from "./spotify-store"
 import { useCommercialStore } from "./commercial-store"
-import { getDriveAudioUrl } from "./drive-api"
+import { getDriveAudioProxyUrl } from "./drive-api"
 import { skipToNext } from "./spotify-api"
 
 const QUEUE_TRIGGER_MS = 1500 // pause Spotify when this many ms remain
@@ -57,8 +57,7 @@ export function useCommercialEngine() {
           // Skip to next so resume starts fresh track
         }
 
-        const apiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY ?? ""
-        const audioUrl = getDriveAudioUrl(file.id, apiKey)
+        const audioUrl = getDriveAudioProxyUrl(file.id)
         const audio = new Audio(audioUrl)
         audioRef.current = audio
 

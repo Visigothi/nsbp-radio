@@ -1,11 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useSession } from "next-auth/react"
 import { useCommercialStore } from "@/lib/commercial-store"
 import { useCommercialEngine } from "@/lib/use-commercial-engine"
-import { fetchDriveFiles, extractFolderIdFromUrl, DriveFile } from "@/lib/drive-api"
+import { fetchDriveFiles, extractFolderIdFromUrl, DriveFile, DriveAccessError } from "@/lib/drive-api"
 
 export default function CommercialPanel() {
+  const { data: session } = useSession()
   const {
     files,
     folderId,
@@ -21,20 +23,25 @@ export default function CommercialPanel() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [accessDenied, setAccessDenied] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [folderInput, setFolderInput] = useState("")
 
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY ?? ""
-
   const loadFiles = async (id: string) => {
-    if (!id || !apiKey) return
+    const accessToken = session?.accessToken
+    if (!id || !accessToken) return
     setLoading(true)
     setError(null)
+    setAccessDenied(false)
     try {
-      const result = await fetchDriveFiles(id, apiKey)
+      const result = await fetchDriveFiles(id, accessToken)
       setFiles(result)
     } catch (e) {
-      setError("Failed to load files. Check the folder ID and API key.")
+      if (e instanceof DriveAccessError) {
+        setAccessDenied(true)
+      } else {
+        setError("Failed to load files. Check the folder ID.")
+      }
       console.error(e)
     } finally {
       setLoading(false)
@@ -42,8 +49,8 @@ export default function CommercialPanel() {
   }
 
   useEffect(() => {
-    if (folderId) loadFiles(folderId)
-  }, [folderId]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (folderId && session?.accessToken) loadFiles(folderId)
+  }, [folderId, session?.accessToken]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFolderSave = () => {
     const extracted = extractFolderIdFromUrl(folderInput) ?? folderInput.trim()
@@ -126,11 +133,28 @@ export default function CommercialPanel() {
         </div>
       )}
 
+      {/* Access denied dialog */}
+      {accessDenied && (
+        <div className="bg-red-950/50 border border-red-700 rounded-lg p-3 space-y-1.5">
+          <p className="text-red-300 text-sm font-medium">Access Denied</p>
+          <p className="text-red-400 text-xs leading-snug">
+            Your Google account doesn&apos;t have permission to access the
+            commercials folder. Contact your administrator to get access.
+          </p>
+          <button
+            onClick={() => setAccessDenied(false)}
+            className="text-xs text-red-400 hover:text-red-200 transition-colors"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* File list */}
       <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0">
         {loading && <p className="text-zinc-500 text-sm">Loading files...</p>}
         {error && <p className="text-red-400 text-sm">{error}</p>}
-        {!loading && !error && files.length === 0 && (
+        {!loading && !error && !accessDenied && files.length === 0 && (
           <p className="text-zinc-500 text-sm">
             No MP3 files found in this folder.
           </p>
