@@ -15,6 +15,7 @@ export default function CommercialPanel() {
     setFiles,
     setFolderId,
     queueCommercial,
+    clearQueue,
   } = useCommercialStore()
 
   const { skipCommercial } = useCommercialEngine()
@@ -87,7 +88,7 @@ export default function CommercialPanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">
-          Commercials
+          Announcements
         </h2>
         <button
           onClick={() => setShowSettings((s) => !s)}
@@ -126,7 +127,7 @@ export default function CommercialPanel() {
         </div>
       )}
 
-      {/* Commercial playing banner */}
+      {/* Announcement playing banner */}
       {status === "playing" && playingFile && (
         <div className="bg-amber-900/40 border border-amber-700 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -146,11 +147,20 @@ export default function CommercialPanel() {
 
       {/* Queued banner */}
       {status === "queued" && queued && (
-        <div className="bg-blue-900/40 border border-blue-700 rounded-lg px-3 py-2 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shrink-0" />
-          <span className="text-blue-200 text-xs font-medium truncate">
-            Queued: {queued.file.displayName}
-          </span>
+        <div className="bg-blue-900/40 border border-blue-700 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shrink-0" />
+            <span className="text-blue-200 text-xs font-medium truncate">
+              Queued: {queued.file.displayName}
+            </span>
+          </div>
+          <button
+            onClick={clearQueue}
+            className="text-xs text-blue-400 hover:text-white shrink-0 transition-colors"
+            title="Remove from queue"
+          >
+            Remove
+          </button>
         </div>
       )}
 
@@ -160,7 +170,7 @@ export default function CommercialPanel() {
           <p className="text-red-300 text-sm font-medium">Access Denied</p>
           <p className="text-red-400 text-xs leading-snug">
             Your Google account doesn&apos;t have permission to access the
-            commercials folder. Contact your administrator to get access.
+            announcements folder. Contact your administrator to get access.
           </p>
           <button
             onClick={() => setAccessDenied(false)}
@@ -177,7 +187,7 @@ export default function CommercialPanel() {
         {error && <p className="text-red-400 text-sm">{error}</p>}
         {!loading && !error && !accessDenied && files.length === 0 && (
           <p className="text-zinc-500 text-sm">
-            No MP3 files found in this folder.
+            No announcements found in this folder.
           </p>
         )}
         {files.map((file) => (

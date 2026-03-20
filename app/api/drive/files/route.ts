@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
   if (driveRes.status === 401 || driveRes.status === 403) {
     return NextResponse.json(
-      { error: "DRIVE_ACCESS_DENIED", message: "Your Google account doesn't have access to the commercials folder." },
+      { error: "DRIVE_ACCESS_DENIED", message: "Your Google account doesn't have access to the announcements folder." },
       { status: 403 }
     )
   }
