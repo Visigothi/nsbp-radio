@@ -12,11 +12,7 @@ import {
   SpotifyPlaylist,
 } from "@/lib/spotify-api"
 
-interface SpotifyPanelProps {
-  disabled?: boolean
-}
-
-export default function SpotifyPanel({ disabled = false }: SpotifyPanelProps) {
+export default function SpotifyPanel() {
   useSpotifyPlayer()
 
   const { tokens, player, deviceId, playerState, isReady } = useSpotifyStore()
@@ -93,7 +89,7 @@ export default function SpotifyPanel({ disabled = false }: SpotifyPanelProps) {
   const progressPct = playerState ? (progress / playerState.duration) * 100 : 0
 
   return (
-    <div className={`flex flex-col h-full gap-4 ${disabled ? "opacity-40 pointer-events-none" : ""}`}>
+    <div className="flex flex-col h-full gap-4">
       {/* Playlist selector */}
       <div>
         <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">
