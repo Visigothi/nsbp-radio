@@ -25,10 +25,12 @@ export async function GET(request: NextRequest) {
   }
 
   const params = new URLSearchParams({
-    q: `'${folderId}' in parents and mimeType='audio/mpeg' and trashed=false`,
+    q: `'${folderId}' in parents and trashed=false`,
     fields: "files(id,name,mimeType)",
     pageSize: "100",
     orderBy: "name",
+    includeItemsFromAllDrives: "true",
+    supportsAllDrives: "true",
   })
 
   const driveRes = await fetch(
