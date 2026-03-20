@@ -129,16 +129,23 @@ export default function CommercialPanel() {
 
       {/* Announcement playing banner */}
       {status === "playing" && playingFile && (
-        <div className="bg-amber-900/40 border border-amber-700 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+        <div
+          className="rounded-lg px-3 py-2 flex items-center justify-between gap-2"
+          style={{ background: "rgba(255,157,26,0.1)", border: "1px solid rgba(255,157,26,0.4)" }}
+        >
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
-            <span className="text-amber-200 text-xs font-medium truncate">
+            <span
+              className="w-2 h-2 rounded-full animate-pulse shrink-0"
+              style={{ background: "var(--brand-orange)" }}
+            />
+            <span className="text-white text-xs font-medium truncate">
               Playing: {playingFile.displayName}
             </span>
           </div>
           <button
             onClick={skipCommercial}
-            className="text-xs text-amber-400 hover:text-amber-200 shrink-0 transition-colors"
+            className="text-xs shrink-0 transition-colors hover:text-white"
+            style={{ color: "var(--brand-orange)" }}
           >
             Skip
           </button>
@@ -147,16 +154,23 @@ export default function CommercialPanel() {
 
       {/* Queued banner */}
       {status === "queued" && queued && (
-        <div className="bg-blue-900/40 border border-blue-700 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+        <div
+          className="rounded-lg px-3 py-2 flex items-center justify-between gap-2"
+          style={{ background: "rgba(255,157,26,0.07)", border: "1px solid rgba(255,157,26,0.25)" }}
+        >
           <div className="flex items-center gap-2 min-w-0">
-            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shrink-0" />
-            <span className="text-blue-200 text-xs font-medium truncate">
+            <span
+              className="w-2 h-2 rounded-full animate-pulse shrink-0"
+              style={{ background: "var(--brand-orange)" }}
+            />
+            <span className="text-zinc-300 text-xs font-medium truncate">
               Queued: {queued.file.displayName}
             </span>
           </div>
           <button
             onClick={clearQueue}
-            className="text-xs text-blue-400 hover:text-white shrink-0 transition-colors"
+            className="text-xs shrink-0 transition-colors hover:text-white"
+            style={{ color: "var(--brand-orange)" }}
             title="Remove from queue"
           >
             Remove
@@ -224,20 +238,33 @@ function CommercialCard({
   onInterrupt,
 }: CommercialCardProps) {
   const highlight = isQueued
-    ? "border-blue-600 bg-blue-950/30"
+    ? { border: "1px solid rgba(255,157,26,0.35)", background: "rgba(255,157,26,0.07)" }
     : isPlaying
-    ? "border-amber-600 bg-amber-950/30"
-    : "border-zinc-700 bg-zinc-800/50 hover:border-zinc-600"
+    ? { border: "1px solid rgba(255,157,26,0.6)", background: "rgba(255,157,26,0.12)" }
+    : {}
+
+  const highlightClass = !isQueued && !isPlaying
+    ? "border border-zinc-700/60 bg-zinc-800/40 hover:border-zinc-600"
+    : ""
 
   return (
-    <div className={`rounded-lg border px-3 py-2.5 flex items-center gap-2 transition-colors ${highlight}`}>
+    <div
+      className={`rounded-lg px-3 py-2.5 flex items-center gap-2 transition-colors ${highlightClass}`}
+      style={isQueued || isPlaying ? highlight : {}}
+    >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           {isQueued && (
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0" />
+            <span
+              className="w-1.5 h-1.5 rounded-full animate-pulse shrink-0"
+              style={{ background: "var(--brand-orange)" }}
+            />
           )}
           {isPlaying && (
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <span
+              className="w-1.5 h-1.5 rounded-full animate-pulse shrink-0"
+              style={{ background: "var(--brand-orange)" }}
+            />
           )}
           <p className="text-sm text-white truncate">{file.displayName}</p>
         </div>

@@ -21,18 +21,30 @@ export default function AppShell() {
     <div className="flex flex-col flex-1 min-h-0">
       {/* Queued announcement banner */}
       {isCommercialQueued && queued && (
-        <div className="shrink-0 bg-blue-900/50 border-b border-blue-800 px-6 py-2 flex items-center justify-between gap-2">
+        <div
+          className="shrink-0 px-6 py-2 flex items-center justify-between gap-2"
+          style={{
+            borderBottom: "1px solid rgba(255,157,26,0.25)",
+            background: "rgba(255,157,26,0.07)",
+          }}
+        >
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shrink-0" />
-            <span className="text-blue-200 text-sm">
+            <span
+              className="w-2 h-2 rounded-full animate-pulse shrink-0"
+              style={{ background: "var(--brand-orange)" }}
+            />
+            <span className="text-zinc-200 text-sm">
               Announcement queued:{" "}
-              <span className="font-medium">{queued.file.displayName}</span>
-              {queued.mode === "queue" && " — will play after current track"}
+              <span className="font-medium text-white">{queued.file.displayName}</span>
+              {queued.mode === "queue" && (
+                <span className="text-zinc-400"> — will play after current track</span>
+              )}
             </span>
           </div>
           <button
             onClick={clearQueue}
-            className="text-blue-400 hover:text-white text-xs px-2 py-0.5 rounded border border-blue-700 hover:border-blue-400 transition-colors shrink-0"
+            className="text-xs px-2 py-0.5 rounded transition-colors shrink-0 hover:text-white"
+            style={{ color: "var(--brand-orange)", border: "1px solid rgba(255,157,26,0.4)" }}
             title="Remove from queue"
           >
             Remove

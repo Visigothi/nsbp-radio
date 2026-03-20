@@ -1,21 +1,56 @@
 import { auth, signOut } from "@/auth"
 import { redirect } from "next/navigation"
+import Image from "next/image"
 import AppShell from "./components/AppShell"
+import AnimatedBackground from "./components/AnimatedBackground"
 
 export default async function Home() {
   const session = await auth()
   if (!session) redirect("/login")
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white flex flex-col">
+    <main className="min-h-screen bg-black text-white flex flex-col relative">
+      {/* Animated background — sits behind everything */}
+      <AnimatedBackground />
+
       {/* Top bar */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-zinc-800 shrink-0">
+      <header
+        className="relative z-10 flex items-center justify-between px-5 py-2 shrink-0"
+        style={{
+          borderBottom: "1px solid rgba(255, 157, 26, 0.2)",
+          background: "rgba(0,0,0,0.6)",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        {/* Left: logo + wordmark */}
         <div className="flex items-center gap-3">
-          <span className="text-base font-bold tracking-tight">NSBP Radio</span>
-          <span className="text-zinc-600 text-xs hidden sm:inline">North Shore Bike Park</span>
+          <div className="relative h-9 w-28 shrink-0">
+            <Image
+              src="/nsbp-logo.png"
+              alt="North Shore Bike Park"
+              fill
+              className="object-contain object-left"
+              priority
+            />
+          </div>
+          <div className="flex items-baseline gap-1.5 leading-none">
+            <span className="text-white font-bold text-sm tracking-tight">
+              North Shore Bike Park
+            </span>
+            <span
+              className="font-bold text-sm tracking-tight"
+              style={{ color: "var(--brand-orange)" }}
+            >
+              Radio
+            </span>
+          </div>
         </div>
+
+        {/* Right: user + sign out */}
         <div className="flex items-center gap-4">
-          <span className="text-zinc-500 text-xs hidden sm:inline">{session.user?.email}</span>
+          <span className="text-zinc-500 text-xs hidden sm:inline">
+            {session.user?.email}
+          </span>
           <form
             action={async () => {
               "use server"
@@ -33,7 +68,9 @@ export default async function Home() {
       </header>
 
       {/* Main two-panel layout */}
-      <AppShell />
+      <div className="relative z-10 flex flex-col flex-1 min-h-0">
+        <AppShell />
+      </div>
     </main>
   )
 }
