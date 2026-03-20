@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useCommercialStore } from "@/lib/commercial-store"
 import { useCommercialEngine } from "@/lib/use-commercial-engine"
 import { extractFolderIdFromUrl, DriveFile } from "@/lib/drive-api"
+import ClosingTimeSection from "./ClosingTimeSection"
 
 export default function CommercialPanel() {
   const {
@@ -216,6 +217,9 @@ export default function CommercialPanel() {
           />
         ))}
       </div>
+
+      {/* Closing Time — hardcoded daily closing track */}
+      <ClosingTimeSection />
     </div>
   )
 }
