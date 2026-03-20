@@ -244,7 +244,7 @@ function CommercialCard({
     : {}
 
   const highlightClass = !isQueued && !isPlaying
-    ? "border border-zinc-700/60 bg-zinc-800/40 hover:border-zinc-600"
+    ? "border border-zinc-700/60 bg-zinc-800/40 hover-brand"
     : ""
 
   return (

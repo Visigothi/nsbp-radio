@@ -252,10 +252,10 @@ export default function SpotifyPanel() {
               <div
                 key={`${track.uri}-${i}`}
                 onClick={() => !track.explicit && handlePlayFromQueue(track.uri)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${
                   track.explicit
-                    ? "opacity-40 cursor-default"
-                    : "bg-zinc-800/40 hover:bg-zinc-700/60 cursor-pointer"
+                    ? "opacity-40 cursor-default border-transparent"
+                    : "hover-brand bg-zinc-800/40 border-zinc-700/50 cursor-pointer"
                 }`}
                 title={track.explicit ? "Explicit — will be skipped automatically" : "Click to play"}
               >

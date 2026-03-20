@@ -23,8 +23,8 @@ export default async function Home() {
         }}
       >
         {/* Left: logo + wordmark */}
-        <div className="flex items-center gap-3">
-          <div className="relative h-9 w-28 shrink-0">
+        <div className="flex items-center gap-4">
+          <div className="relative h-[72px] w-56 shrink-0">
             <Image
               src="/nsbp-logo.png"
               alt="North Shore Bike Park"
@@ -33,12 +33,12 @@ export default async function Home() {
               priority
             />
           </div>
-          <div className="flex items-baseline gap-1.5 leading-none">
-            <span className="text-white font-bold text-sm tracking-tight">
+          <div className="flex items-baseline gap-2 leading-none">
+            <span className="text-white font-bold text-xl tracking-tight">
               North Shore Bike Park
             </span>
             <span
-              className="font-bold text-sm tracking-tight"
+              className="font-bold text-xl tracking-tight"
               style={{ color: "var(--brand-orange)" }}
             >
               Radio
