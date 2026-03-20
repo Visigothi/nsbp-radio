@@ -1,13 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useSession } from "next-auth/react"
 import { useCommercialStore } from "@/lib/commercial-store"
 import { useCommercialEngine } from "@/lib/use-commercial-engine"
-import { fetchDriveFiles, extractFolderIdFromUrl, DriveFile, DriveAccessError } from "@/lib/drive-api"
+import { extractFolderIdFromUrl, DriveFile } from "@/lib/drive-api"
 
 export default function CommercialPanel() {
-  const { data: session } = useSession()
   const {
     files,
     folderId,
@@ -28,20 +26,43 @@ export default function CommercialPanel() {
   const [folderInput, setFolderInput] = useState("")
 
   const loadFiles = async (id: string) => {
-    const accessToken = session?.accessToken
-    if (!id || !accessToken) return
+    if (!id) return
     setLoading(true)
     setError(null)
     setAccessDenied(false)
     try {
-      const result = await fetchDriveFiles(id, accessToken)
-      setFiles(result)
-    } catch (e) {
-      if (e instanceof DriveAccessError) {
+      const res = await fetch(`/api/drive/files?folderId=${encodeURIComponent(id)}`)
+      if (res.status === 403) {
         setAccessDenied(true)
-      } else {
-        setError("Failed to load files. Check the folder ID.")
+        return
       }
+      if (res.status === 401) {
+        const body = await res.json()
+        if (body.error === "NO_ACCESS_TOKEN") {
+          setError("Session expired — please sign out and sign back in.")
+        } else {
+          setError("Not authenticated.")
+        }
+        return
+      }
+      if (!res.ok) {
+        setError("Failed to load files. Check the folder ID.")
+        return
+      }
+      const data: { files: { id: string; name: string; mimeType: string }[] } = await res.json()
+      const mapped: DriveFile[] = (data.files ?? []).map((f) => ({
+        id: f.id,
+        name: f.name,
+        mimeType: f.mimeType,
+        displayName: f.name
+          .replace(/\.mp3$/i, "")
+          .replace(/[_-]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim(),
+      }))
+      setFiles(mapped)
+    } catch (e) {
+      setError("Failed to load files.")
       console.error(e)
     } finally {
       setLoading(false)
@@ -49,8 +70,8 @@ export default function CommercialPanel() {
   }
 
   useEffect(() => {
-    if (folderId && session?.accessToken) loadFiles(folderId)
-  }, [folderId, session?.accessToken]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (folderId) loadFiles(folderId)
+  }, [folderId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFolderSave = () => {
     const extracted = extractFolderIdFromUrl(folderInput) ?? folderInput.trim()

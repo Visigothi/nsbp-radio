@@ -24,7 +24,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async jwt({ token, account }) {
       // On first sign-in, account contains the Google tokens
-      if (account?.access_token) {
+      if (account) {
+        console.log("[auth jwt] account keys:", Object.keys(account))
+        console.log("[auth jwt] has access_token:", !!account.access_token)
         token.accessToken = account.access_token
       }
       return token
