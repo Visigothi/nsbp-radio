@@ -46,9 +46,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user }) {
       const allowedEmails = (process.env.ALLOWED_EMAILS ?? "")
         .split(",")
-        .map((e) => e.trim())
+        .map((e) => e.trim().toLowerCase())
         .filter(Boolean)
-      return allowedEmails.includes(user.email ?? "")
+      return allowedEmails.includes((user.email ?? "").toLowerCase())
     },
 
     async jwt({ token, account }) {

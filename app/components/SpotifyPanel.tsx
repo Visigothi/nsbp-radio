@@ -8,7 +8,7 @@ import { useSpotifyPlayer } from "@/lib/use-spotify-player"
 import { useQueue } from "@/lib/use-queue"
 import { usePlayHistory } from "@/lib/use-play-history"
 import { getPlayCounts, PlayCounts } from "@/lib/play-history"
-import { initiateSpotifyAuth } from "@/lib/spotify-auth"
+import { initiateSpotifyAuth, clearSpotifyTokens } from "@/lib/spotify-auth"
 import {
   fetchUserPlaylists,
   playPlaylist,
@@ -18,10 +18,10 @@ import {
 
 export default function SpotifyPanel() {
   useSpotifyPlayer()
-  useQueue()
+  const { refreshQueue } = useQueue()
   usePlayHistory()
 
-  const { tokens, player, deviceId, playerState, isReady, queue } = useSpotifyStore()
+  const { tokens, spotifyUser, player, deviceId, playerState, isReady, queue, clearTokens, setSpotifyUser } = useSpotifyStore()
   const {
     status: announcementStatus,
     queued: queuedAnnouncement,
@@ -45,7 +45,7 @@ export default function SpotifyPanel() {
     }
   }, [isReady, deviceId, tokens])
 
-  // Fetch playlists once connected
+  // Fetch playlists + account info once connected
   useEffect(() => {
     if (!tokens) return
     setLoadingPlaylists(true)
@@ -53,7 +53,14 @@ export default function SpotifyPanel() {
       .then(setPlaylists)
       .catch(console.error)
       .finally(() => setLoadingPlaylists(false))
-  }, [tokens])
+    // Fetch Spotify account identity
+    fetch("https://api.spotify.com/v1/me", {
+      headers: { Authorization: `Bearer ${tokens.accessToken}` },
+    })
+      .then((r) => r.json())
+      .then((u) => setSpotifyUser({ displayName: u.display_name ?? u.id, email: u.email ?? "" }))
+      .catch(console.error)
+  }, [tokens]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live progress bar
   useEffect(() => {
@@ -75,6 +82,11 @@ export default function SpotifyPanel() {
     if (!tokens || !deviceId) return
     setSelectedPlaylist(playlist)
     await playPlaylist(tokens.accessToken, deviceId, `spotify:playlist:${playlist.id}`)
+    // Spotify's queue endpoint lags behind playback context changes.
+    // Refresh at 500 ms, 1.5 s and 3 s to catch it at each update stage.
+    setTimeout(refreshQueue, 500)
+    setTimeout(refreshQueue, 1500)
+    setTimeout(refreshQueue, 3000)
   }
 
   const handlePlayFromQueue = async (trackUri: string) => {
@@ -130,6 +142,12 @@ export default function SpotifyPanel() {
       player.setVolume(i / STEPS)
       await new Promise((r) => setTimeout(r, DELAY))
     }
+
+    // Spotify's queue endpoint lags behind the new playback position.
+    // Refresh at 500 ms, 1.5 s and 3 s to ensure Up Next reflects the correct tracks.
+    setTimeout(refreshQueue, 500)
+    setTimeout(refreshQueue, 1500)
+    setTimeout(refreshQueue, 3000)
   }
 
   const formatTime = (ms: number) => {
@@ -147,7 +165,7 @@ export default function SpotifyPanel() {
           </p>
         </div>
         <button
-          onClick={initiateSpotifyAuth}
+          onClick={() => initiateSpotifyAuth()}
           className="flex items-center gap-2 bg-green-500 hover:bg-green-400 text-black font-semibold py-2.5 px-6 rounded-full transition-colors"
         >
           <SpotifyIcon />
@@ -161,7 +179,7 @@ export default function SpotifyPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Playlist selector */}
+      {/* Playlist selector — sits above the Now Playing box */}
       <div>
         <label className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-2 block">
           Playlist
@@ -189,6 +207,16 @@ export default function SpotifyPanel() {
         )}
       </div>
 
+      {/* NOW PLAYING heading */}
+      <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">
+        Now Playing
+      </h2>
+
+      {/* Orange rounded box: player only */}
+      <div
+        className="rounded-xl p-4 mt-1 flex flex-col gap-4"
+        style={{ border: "1px solid rgba(255,157,26,0.55)", background: "rgba(255,157,26,0.03)" }}
+      >
       {/* Now playing card — compact horizontal layout, ~5% narrower than track list */}
       {playerState ? (
         <div className="mx-[2.5%]">
@@ -275,7 +303,7 @@ export default function SpotifyPanel() {
         </div>
         </div>
       ) : (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-8">
           {!isReady ? (
             <p className="text-zinc-500 text-sm">Connecting player...</p>
           ) : !selectedPlaylist ? (
@@ -285,6 +313,7 @@ export default function SpotifyPanel() {
           )}
         </div>
       )}
+      </div>{/* end orange box */}
 
       {/* Up next queue */}
       {(queue.length > 0 || (announcementStatus === "queued" && queuedAnnouncement) || closingTimeQueued) && (
@@ -482,7 +511,7 @@ function PauseIcon() {
 
 function PrevIcon() {
   return (
-    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+    <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
       <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
     </svg>
   )
@@ -490,7 +519,7 @@ function PrevIcon() {
 
 function NextIcon() {
   return (
-    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+    <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
       <path d="M6 18l8.5-6L6 6v12zm2.5-6l6-4.269V16.27L8.5 12zM16 6h2v12h-2z" />
     </svg>
   )
@@ -498,7 +527,7 @@ function NextIcon() {
 
 function ShuffleIcon() {
   return (
-    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
       <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
     </svg>
   )

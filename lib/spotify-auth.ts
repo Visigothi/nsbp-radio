@@ -32,7 +32,7 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
     .replace(/=+$/, "")
 }
 
-export async function initiateSpotifyAuth(): Promise<void> {
+export async function initiateSpotifyAuth(options?: { showDialog?: boolean }): Promise<void> {
   const verifier = generateCodeVerifier(128)
   const challenge = await generateCodeChallenge(verifier)
   sessionStorage.setItem("spotify_code_verifier", verifier)
@@ -44,9 +44,15 @@ export async function initiateSpotifyAuth(): Promise<void> {
     code_challenge_method: "S256",
     code_challenge: challenge,
     scope: SCOPES,
+    ...(options?.showDialog ? { show_dialog: "true" } : {}),
   })
 
   window.location.href = `https://accounts.spotify.com/authorize?${params}`
+}
+
+export function clearSpotifyTokens(): void {
+  localStorage.removeItem("spotify_tokens")
+  sessionStorage.removeItem("spotify_code_verifier")
 }
 
 export async function exchangeCodeForToken(code: string): Promise<SpotifyTokens> {

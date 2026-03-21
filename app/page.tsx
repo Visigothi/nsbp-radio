@@ -47,23 +47,26 @@ export default async function Home() {
         </div>
 
         {/* Right: user + sign out */}
-        <div className="flex items-center gap-4">
-          <span className="text-zinc-500 text-xs hidden sm:inline">
-            {session.user?.email}
-          </span>
-          <form
-            action={async () => {
-              "use server"
-              await signOut({ redirectTo: "/login" })
-            }}
-          >
-            <button
-              type="submit"
-              className="text-xs text-zinc-500 hover:text-white transition-colors"
+        <div className="flex flex-col items-end gap-0.5">
+          <div className="flex items-center gap-4">
+            <span className="text-zinc-500 text-xs hidden sm:inline">
+              {session.user?.email}
+            </span>
+            <form
+              action={async () => {
+                "use server"
+                await signOut({ redirectTo: "/login" })
+              }}
             >
-              Sign out
-            </button>
-          </form>
+              <button
+                type="submit"
+                className="text-xs text-zinc-500 hover:text-white transition-colors"
+              >
+                Sign out
+              </button>
+            </form>
+          </div>
+          <span className="text-zinc-600 text-[10px] tracking-wide">v1.0 BETA</span>
         </div>
       </header>
 

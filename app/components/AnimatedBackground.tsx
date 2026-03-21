@@ -1,70 +1,77 @@
 "use client"
 
 /**
- * Subtle animated background: slowly drifting near-horizontal contour lines
- * at 1-3° offsets (never perfectly straight, per brand guidelines).
- * Three independent layers — white and brand-orange — at different speeds.
- * Background stays black; lines are 2-4% opacity so content always dominates.
+ * Animated background: three slowly drifting radial light blobs
+ * (warm orange + cool neutral) layered over a black base.
+ * Fine contour lines add texture at very low opacity.
+ * Background stays predominantly black; blobs are 8–13% opacity.
  */
 export default function AnimatedBackground() {
   return (
     <div
       aria-hidden="true"
       className="fixed inset-0 pointer-events-none select-none overflow-hidden"
-      style={{ zIndex: 0 }}
+      style={{ zIndex: 0, opacity: "var(--bg-opacity, 1)" } as React.CSSProperties}
     >
-      {/* Layer A — white lines, 1.5° off horizontal, 60px spacing, drifts up-right */}
+      {/* Blob A — large warm orange glow, lower-left */}
+      <div
+        className="absolute blob-a"
+        style={{
+          width: "150vw",
+          height: "130vh",
+          left: "-40vw",
+          top: "0vh",
+          background:
+            "radial-gradient(ellipse at center, rgba(255,157,26,0.13) 0%, rgba(255,157,26,0.05) 45%, transparent 72%)",
+        }}
+      />
+
+      {/* Blob B — cool blue-white accent, upper-right, 90s drift */}
+      <div
+        className="absolute blob-b"
+        style={{
+          width: "110vw",
+          height: "100vh",
+          right: "-20vw",
+          top: "-20vh",
+          background:
+            "radial-gradient(ellipse at center, rgba(190,210,255,0.07) 0%, rgba(190,210,255,0.02) 50%, transparent 70%)",
+        }}
+      />
+
+      {/* Blob C — secondary orange bloom, center-right, 110s drift */}
+      <div
+        className="absolute blob-c"
+        style={{
+          width: "100vw",
+          height: "90vh",
+          right: "-10vw",
+          bottom: "-15vh",
+          background:
+            "radial-gradient(ellipse at center, rgba(255,157,26,0.08) 0%, transparent 65%)",
+        }}
+      />
+
+      {/* Texture layer — very fine near-horizontal lines for depth */}
       <div
         className="absolute inset-0 contour-a"
         style={{
           backgroundImage: `repeating-linear-gradient(
             88.5deg,
             transparent 0px,
-            transparent 58px,
-            rgba(255, 255, 255, 0.038) 59px,
-            rgba(255, 255, 255, 0.038) 60px
+            transparent 59px,
+            rgba(255,255,255,0.03) 60px
           )`,
         }}
       />
-
-      {/* Layer B — brand-orange lines, 0.7° off horizontal, 90px spacing, drifts down-left */}
-      <div
-        className="absolute inset-0 contour-b"
-        style={{
-          backgroundImage: `repeating-linear-gradient(
-            90.7deg,
-            transparent 0px,
-            transparent 88px,
-            rgba(255, 157, 26, 0.028) 89px,
-            rgba(255, 157, 26, 0.028) 90px
-          )`,
-        }}
-      />
-
-      {/* Layer C — fine white lines, 2.2° off horizontal, 130px spacing, drifts up slowly */}
       <div
         className="absolute inset-0 contour-c"
         style={{
           backgroundImage: `repeating-linear-gradient(
-            89.1deg,
+            89.3deg,
             transparent 0px,
-            transparent 128px,
-            rgba(255, 255, 255, 0.022) 129px,
-            rgba(255, 255, 255, 0.022) 130px
-          )`,
-        }}
-      />
-
-      {/* Layer D — sparse brand-orange accent lines, 1.8° off, 200px spacing */}
-      <div
-        className="absolute inset-0 contour-d"
-        style={{
-          backgroundImage: `repeating-linear-gradient(
-            91.8deg,
-            transparent 0px,
-            transparent 198px,
-            rgba(255, 157, 26, 0.018) 199px,
-            rgba(255, 157, 26, 0.018) 200px
+            transparent 129px,
+            rgba(255,157,26,0.025) 130px
           )`,
         }}
       />

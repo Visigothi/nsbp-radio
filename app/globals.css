@@ -6,6 +6,8 @@
   --brand-orange: #ff9d1a;
   --brand-orange-dim: rgba(255, 157, 26, 0.12);
   --brand-orange-glow: rgba(255, 157, 26, 0.25);
+  --bg-speed: 30;
+  --bg-opacity: 1;
 }
 
 @theme inline {
@@ -38,32 +40,47 @@ body {
 }
 .blink-alert { animation: blink-alert 3s ease-in-out infinite; }
 
-/* ── Animated background contour layers ─────────────────────────────────── */
+/* ── Animated background ─────────────────────────────────────────────────── */
 
-/* Layer A: white lines drift up-right over 50s */
+/* Blob A — warm orange, lower-left, 70s loop */
+@keyframes blob-a {
+  0%   { transform: translate(0vw,   0vh);  }
+  20%  { transform: translate(6vw,  -4vh);  }
+  45%  { transform: translate(10vw,  3vh);  }
+  70%  { transform: translate(4vw,   7vh);  }
+  100% { transform: translate(0vw,   0vh);  }
+}
+/* Duration = base / --bg-speed (default 1). Higher speed = shorter duration = faster. */
+.blob-a { animation: blob-a calc(70s / var(--bg-speed, 1)) ease-in-out infinite; }
+
+/* Blob B — cool blue-white, upper-right */
+@keyframes blob-b {
+  0%   { transform: translate(0vw,  0vh);  }
+  30%  { transform: translate(-6vw, 5vh);  }
+  60%  { transform: translate(-3vw, 9vh);  }
+  100% { transform: translate(0vw,  0vh);  }
+}
+.blob-b { animation: blob-b calc(90s / var(--bg-speed, 1)) ease-in-out infinite; }
+
+/* Blob C — secondary orange, lower-right */
+@keyframes blob-c {
+  0%   { transform: translate(0vw,   0vh);  }
+  25%  { transform: translate(-7vw, -5vh);  }
+  55%  { transform: translate(-4vw,  3vh);  }
+  80%  { transform: translate(-9vw, -2vh);  }
+  100% { transform: translate(0vw,   0vh);  }
+}
+.blob-c { animation: blob-c calc(110s / var(--bg-speed, 1)) ease-in-out infinite; }
+
+/* Texture lines */
 @keyframes contour-a {
   from { background-position: 0px 0px; }
-  to   { background-position: -140px 280px; }
+  to   { background-position: -80px 200px; }
 }
-.contour-a { animation: contour-a 50s linear infinite; }
+.contour-a { animation: contour-a calc(80s / var(--bg-speed, 1)) linear infinite; }
 
-/* Layer B: orange lines drift down-left over 70s */
-@keyframes contour-b {
-  from { background-position: 0px 0px; }
-  to   { background-position: 110px -220px; }
-}
-.contour-b { animation: contour-b 70s linear infinite; }
-
-/* Layer C: fine white lines drift up over 85s */
 @keyframes contour-c {
   from { background-position: 0px 0px; }
-  to   { background-position: -60px 380px; }
+  to   { background-position: -40px 260px; }
 }
-.contour-c { animation: contour-c 85s linear infinite; }
-
-/* Layer D: sparse orange accents drift right over 110s */
-@keyframes contour-d {
-  from { background-position: 0px 0px; }
-  to   { background-position: 200px -160px; }
-}
-.contour-d { animation: contour-d 110s linear infinite; }
+.contour-c { animation: contour-c calc(100s / var(--bg-speed, 1)) linear infinite; }

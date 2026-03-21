@@ -25,6 +25,8 @@ interface CommercialStore {
   playingFile: DriveFile | null
   /** Track to play after the current announcement finishes */
   pendingTrack: PendingTrack | null
+  /** Live playback position of the currently-playing announcement (ms), or null when idle */
+  announcementProgress: { position: number; duration: number } | null
   /** Whether "Closing Time" has been added to the Spotify queue */
   closingTimeQueued: boolean
   /** Set when Closing Time was queued then removed — causes auto-skip when it starts playing */
@@ -37,39 +39,34 @@ interface CommercialStore {
   setStatus: (status: CommercialStatus) => void
   setPlayingFile: (file: DriveFile | null) => void
   setPendingTrack: (track: PendingTrack | null) => void
+  setAnnouncementProgress: (p: { position: number; duration: number } | null) => void
   setClosingTimeQueued: (queued: boolean) => void
   setClosingTimeRemoved: (removed: boolean) => void
 }
 
-const DEFAULT_FOLDER_ID = process.env.NEXT_PUBLIC_DEFAULT_DRIVE_FOLDER_ID ?? ""
-const LS_KEY = "nsbp_radio_folder_id"
-
-function getInitialFolderId(): string {
-  if (typeof window === "undefined") return DEFAULT_FOLDER_ID
-  return localStorage.getItem(LS_KEY) ?? DEFAULT_FOLDER_ID
-}
+// Hardcoded announcements folder — no user configuration needed
+export const ANNOUNCEMENTS_FOLDER_ID = "1fiQBvHdVwm1EymnH-OAOnGFhtjSA0nED"
 
 export const useCommercialStore = create<CommercialStore>((set) => ({
   files: [],
-  folderId: getInitialFolderId(),
+  folderId: ANNOUNCEMENTS_FOLDER_ID,
   queued: null,
   status: "idle",
   playingFile: null,
   pendingTrack: null,
+  announcementProgress: null,
   closingTimeQueued: false,
   closingTimeRemoved: false,
 
   setFiles: (files) => set({ files }),
-  setFolderId: (folderId) => {
-    if (typeof window !== "undefined") localStorage.setItem(LS_KEY, folderId)
-    set({ folderId })
-  },
+  setFolderId: (folderId) => set({ folderId }),
   // Queuing an announcement replaces any existing queued item (announcement or Closing Time)
   queueCommercial: (file, mode) => set({ queued: { file, mode }, status: "queued", closingTimeQueued: false }),
   clearQueue: () => set({ queued: null, status: "idle", playingFile: null, pendingTrack: null }),
   setStatus: (status) => set({ status }),
   setPlayingFile: (playingFile) => set({ playingFile }),
   setPendingTrack: (pendingTrack) => set({ pendingTrack }),
+  setAnnouncementProgress: (announcementProgress) => set({ announcementProgress }),
   setClosingTimeQueued: (closingTimeQueued) => set({ closingTimeQueued }),
   setClosingTimeRemoved: (closingTimeRemoved) => set({ closingTimeRemoved }),
 }))

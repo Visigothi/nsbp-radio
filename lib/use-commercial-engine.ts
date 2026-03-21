@@ -12,7 +12,7 @@ const FADE_STEPS = 30
 
 export function useCommercialEngine() {
   const { tokens, player, deviceId } = useSpotifyStore()
-  const { queued, status, setStatus, setPlayingFile, clearQueue, pendingTrack } =
+  const { queued, status, setStatus, setPlayingFile, clearQueue, pendingTrack, setAnnouncementProgress } =
     useCommercialStore()
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -79,11 +79,25 @@ export function useCommercialEngine() {
         const audio = new Audio(audioUrl)
         audioRef.current = audio
 
+        // Stream live position into the store for the progress bar
+        const onTimeUpdate = () => {
+          if (audio.duration && !isNaN(audio.duration)) {
+            setAnnouncementProgress({
+              position: audio.currentTime * 1000,
+              duration: audio.duration * 1000,
+            })
+          }
+        }
+        audio.addEventListener("timeupdate", onTimeUpdate)
+
         await new Promise<void>((resolve, reject) => {
           audio.addEventListener("ended", () => resolve())
           audio.addEventListener("error", (e) => reject(e))
           audio.play().catch(reject)
         })
+
+        audio.removeEventListener("timeupdate", onTimeUpdate)
+        setAnnouncementProgress(null)
 
         // After announcement: check for a pending user-selected track
         const pending = pendingTrackRef.current
@@ -185,10 +199,11 @@ export function useCommercialEngine() {
       audioRef.current.currentTime = 0
     }
     engineBusy.current = false
+    setAnnouncementProgress(null)
     playerRef.current?.setVolume(1)
     playerRef.current?.resume()
     clearQueue()
-  }, [clearQueue])
+  }, [clearQueue, setAnnouncementProgress])
 
   return { skipCommercial }
 }
