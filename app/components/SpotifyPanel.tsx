@@ -36,7 +36,46 @@ export default function SpotifyPanel() {
   const [selectedPlaylist, setSelectedPlaylist] = useState<SpotifyPlaylist | null>(null)
   const [loadingPlaylists, setLoadingPlaylists] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [micActive, setMicActive] = useState(false)
+  const micFading = useRef(false)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const handleMicToggle = async () => {
+    if (!player || micFading.current) return
+    micFading.current = true
+    const STEPS = 30
+    const DELAY = 1500 / STEPS
+    if (!micActive) {
+      // Fade down to 10%
+      for (let i = STEPS; i >= STEPS * 0.1; i--) {
+        player.setVolume(i / STEPS)
+        await new Promise((r) => setTimeout(r, DELAY))
+      }
+      player.setVolume(0.1)
+      setMicActive(true)
+    } else {
+      // Fade back up to 100%
+      for (let i = Math.round(STEPS * 0.1); i <= STEPS; i++) {
+        player.setVolume(i / STEPS)
+        await new Promise((r) => setTimeout(r, DELAY))
+      }
+      player.setVolume(1)
+      setMicActive(false)
+    }
+    micFading.current = false
+  }
+
+  // Continuously enforce 10% volume while mic is active.
+  // Spotify resets the SDK volume internally during each track transition (after
+  // player_state_changed fires), so a one-shot effect always loses the race.
+  // Polling every 250 ms ensures any spike is corrected within a quarter-second.
+  const micActiveRef = useRef(micActive)
+  useEffect(() => { micActiveRef.current = micActive }, [micActive])
+  useEffect(() => {
+    if (!micActive || !player) return
+    const id = setInterval(() => player.setVolume(0.1), 250)
+    return () => clearInterval(id)
+  }, [micActive, player])
 
   // Transfer playback to this device once ready
   useEffect(() => {
@@ -106,11 +145,15 @@ export default function SpotifyPanel() {
       return
     }
 
-    // No announcement queued — fade out and play the selected track directly
+    // No announcement queued — fade out and play the selected track directly.
+    // Respect mic mode: start fade from current volume, restore to correct target.
+    const targetVol = micActiveRef.current ? 0.1 : 1
     const STEPS = 30
     const DELAY = 1500 / STEPS
+    // Fade from current volume down to 0
+    const startVol = micActiveRef.current ? 0.1 : 1
     for (let i = STEPS; i >= 0; i--) {
-      player.setVolume(i / STEPS)
+      player.setVolume((i / STEPS) * startVol)
       await new Promise((r) => setTimeout(r, DELAY))
     }
 
@@ -138,8 +181,9 @@ export default function SpotifyPanel() {
       })
     }
 
+    // Fade back up to the correct volume (10% if mic is active, 100% otherwise)
     for (let i = 0; i <= STEPS; i++) {
-      player.setVolume(i / STEPS)
+      player.setVolume((i / STEPS) * targetVol)
       await new Promise((r) => setTimeout(r, DELAY))
     }
 
@@ -276,6 +320,16 @@ export default function SpotifyPanel() {
                 title={playerState.paused ? "Play" : "Pause"}
               >
                 {playerState.paused ? <PlayIcon /> : <PauseIcon />}
+              </button>
+              {/* Mic button — fades music to 10% for live PA announcements */}
+              <button
+                onClick={handleMicToggle}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                  micActive ? "mic-active bg-red-600 text-white" : "bg-zinc-600 hover:bg-zinc-500 text-zinc-200"
+                }`}
+                title={micActive ? "Mic on — click to restore volume" : "Mic announce — drops music to 10%"}
+              >
+                <MicIcon />
               </button>
               <button
                 onClick={() => player?.nextTrack()}
@@ -529,6 +583,14 @@ function ShuffleIcon() {
   return (
     <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
       <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
+    </svg>
+  )
+}
+
+function MicIcon() {
+  return (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
     </svg>
   )
 }
