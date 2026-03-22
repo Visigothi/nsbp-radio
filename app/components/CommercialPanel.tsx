@@ -5,7 +5,6 @@ import { useCommercialStore, ANNOUNCEMENTS_FOLDER_ID } from "@/lib/commercial-st
 import { useCommercialEngine } from "@/lib/use-commercial-engine"
 import { DriveFile } from "@/lib/drive-api"
 import ClosingTimeSection from "./ClosingTimeSection"
-import SpotifyAccountSection from "./SpotifyAccountSection"
 
 const formatMs = (ms: number) => {
   const s = Math.floor(ms / 1000)
@@ -175,9 +174,6 @@ export default function CommercialPanel() {
 
         {/* Closing Time — hardcoded daily closing track */}
         <ClosingTimeSection />
-
-        {/* Spotify account — login / logout / switch */}
-        <SpotifyAccountSection />
       </div>
     </div>
   )

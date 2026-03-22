@@ -17,8 +17,8 @@
  * and redirect to /login. This avoids exposing a client-side API route
  * for the sign-out action.
  *
- * The version number in the bottom-right of the header should be updated
- * manually whenever a significant change is deployed. Format: vX.Y.Z BETA
+ * The version number is defined in SettingsModal.tsx as APP_VERSION.
+ * Update it there whenever a significant change is deployed. Format: vX.Y.Z BETA
  */
 
 import { auth, signOut } from "@/auth"
@@ -26,6 +26,7 @@ import { redirect } from "next/navigation"
 import Image from "next/image"
 import AppShell from "./components/AppShell"
 import AnimatedBackground from "./components/AnimatedBackground"
+import SettingsModal from "./components/SettingsModal"
 
 export default async function Home() {
   // auth() reads the NextAuth session from the encrypted cookie.
@@ -75,35 +76,21 @@ export default async function Home() {
           </div>
         </div>
 
-        {/* Right: logged-in Google email + sign out button + version number */}
-        <div className="flex flex-col items-end gap-0.5">
-          <div className="flex items-center gap-4">
-            {/* Email hidden on small screens to save space */}
-            <span className="text-zinc-500 text-xs hidden sm:inline">
-              {session.user?.email}
-            </span>
-            {/*
-              Sign out uses a Server Action — the "use server" directive inside
-              the async function means Next.js runs this on the server, not in
-              the browser. signOut() clears the session cookie and redirects.
-            */}
-            <form
-              action={async () => {
-                "use server"
-                await signOut({ redirectTo: "/login" })
-              }}
-            >
-              <button
-                type="submit"
-                className="text-xs text-zinc-500 hover:text-white transition-colors"
-              >
-                Sign out
-              </button>
-            </form>
-          </div>
-          {/* App version — update manually on each significant deploy */}
-          <span className="text-zinc-600 text-[10px] tracking-wide">v1.1.2 BETA</span>
-        </div>
+        {/*
+          Right: settings gear icon — opens modal with Google account,
+          sign out, version number, announcement volume, and Spotify account.
+
+          The signOutAction is defined here as a Server Action (inline async
+          with "use server") and passed as a prop to the Client Component.
+          Next.js App Router serializes Server Actions for use in Client Components.
+        */}
+        <SettingsModal
+          email={session.user?.email}
+          signOutAction={async () => {
+            "use server"
+            await signOut({ redirectTo: "/login" })
+          }}
+        />
       </header>
 
       {/* ── Main content — z-10 so it sits above the animated background ── */}

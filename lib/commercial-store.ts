@@ -21,6 +21,24 @@
 import { create } from "zustand"
 import { DriveFile } from "./drive-api"
 
+/** localStorage key for persisting the announcement gain across sessions */
+const LS_GAIN_KEY = "nsbp_announcement_gain"
+
+/**
+ * Reads the saved announcement gain from localStorage.
+ * Falls back to 1.0 (100%) if not set or invalid.
+ * Safe to call during SSR — returns default when window is unavailable.
+ */
+function getInitialGain(): number {
+  if (typeof window === "undefined") return 1.0
+  const saved = localStorage.getItem(LS_GAIN_KEY)
+  if (saved) {
+    const n = parseFloat(saved)
+    if (!isNaN(n) && n >= 0.5 && n <= 2.0) return n
+  }
+  return 1.0
+}
+
 /** Whether the announcement plays after the current track or interrupts immediately */
 export type CommercialMode = "queue" | "interrupt"
 
@@ -88,6 +106,13 @@ interface CommercialStore {
   setAnnouncementProgress: (p: { position: number; duration: number } | null) => void
   setClosingTimeQueued: (queued: boolean) => void
   setClosingTimeRemoved: (removed: boolean) => void
+  /**
+   * Gain multiplier applied to announcement audio via Web Audio API GainNode.
+   * Range: 0.5 (half volume) to 2.0 (double volume). Default: 1.0 (unchanged).
+   * Persisted in localStorage so the setting survives page refreshes.
+   */
+  announcementGain: number
+  setAnnouncementGain: (gain: number) => void
 }
 
 /**
@@ -111,6 +136,7 @@ export const useCommercialStore = create<CommercialStore>((set) => ({
   announcementProgress: null,
   closingTimeQueued: false,
   closingTimeRemoved: false,
+  announcementGain: getInitialGain(),
 
   setFiles: (files) => set({ files }),
   setFolderId: (folderId) => set({ folderId }),
@@ -136,4 +162,8 @@ export const useCommercialStore = create<CommercialStore>((set) => ({
   setAnnouncementProgress: (announcementProgress) => set({ announcementProgress }),
   setClosingTimeQueued: (closingTimeQueued) => set({ closingTimeQueued }),
   setClosingTimeRemoved: (closingTimeRemoved) => set({ closingTimeRemoved }),
+  setAnnouncementGain: (gain) => {
+    if (typeof window !== "undefined") localStorage.setItem(LS_GAIN_KEY, String(gain))
+    set({ announcementGain: gain })
+  },
 }))

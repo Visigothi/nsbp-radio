@@ -68,6 +68,7 @@ export function useCommercialEngine() {
     clearQueue,
     pendingTrack,
     setAnnouncementProgress,
+    announcementGain,
   } = useCommercialStore()
 
   // Ref for the currently-playing <audio> element (announcement audio).
@@ -88,11 +89,14 @@ export function useCommercialEngine() {
   const deviceIdRef = useRef(deviceId)
   const queuedRef = useRef(queued)
   const pendingTrackRef = useRef(pendingTrack)
+  // Stable ref for announcement gain — read inside async playAnnouncement
+  const announcementGainRef = useRef(announcementGain)
   useEffect(() => { playerRef.current = player }, [player])
   useEffect(() => { tokensRef.current = tokens }, [tokens])
   useEffect(() => { deviceIdRef.current = deviceId }, [deviceId])
   useEffect(() => { queuedRef.current = queued }, [queued])
   useEffect(() => { pendingTrackRef.current = pendingTrack }, [pendingTrack])
+  useEffect(() => { announcementGainRef.current = announcementGain }, [announcementGain])
 
   /**
    * Fades the Spotify player volume between two values over FADE_DURATION_MS.
@@ -161,6 +165,33 @@ export function useCommercialEngine() {
         const audioUrl = getDriveAudioProxyUrl(file.id)
         const audio = new Audio(audioUrl)
         audioRef.current = audio
+
+        /**
+         * Apply announcement gain via Web Audio API GainNode.
+         * The HTML <audio> element's .volume is capped at 1.0 and cannot amplify.
+         * By routing through a GainNode we can set gain > 1.0 to boost quiet files.
+         * gainNode.gain.value of 1.5 = 50% louder; 2.0 = double the amplitude.
+         *
+         * AudioContext requires a "running" state — we call resume() to ensure
+         * it is active. Since announcements are always triggered by user interaction
+         * (clicking Queue or Play Now), the browser autoplay policy is satisfied.
+         *
+         * If the Web Audio API is unavailable (e.g. old Safari), we fall back to
+         * native .volume capped at 1.0.
+         */
+        try {
+          const audioCtx = new AudioContext()
+          await audioCtx.resume()
+          const source = audioCtx.createMediaElementSource(audio)
+          const gainNode = audioCtx.createGain()
+          gainNode.gain.value = announcementGainRef.current
+          source.connect(gainNode)
+          gainNode.connect(audioCtx.destination)
+        } catch (gainErr) {
+          // Fallback: native volume (capped at 1.0 — no amplification possible)
+          audio.volume = Math.min(1, announcementGainRef.current)
+          console.warn("Web Audio API unavailable, using native volume:", gainErr)
+        }
 
         /**
          * Stream live position from the <audio> element into the store.
