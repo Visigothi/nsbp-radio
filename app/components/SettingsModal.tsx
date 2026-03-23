@@ -23,7 +23,7 @@ import SpotifyAccountSection from "./SpotifyAccountSection"
 import { useCommercialStore } from "@/lib/commercial-store"
 
 /** Current app version — update this whenever a significant change is deployed */
-export const APP_VERSION = "v1.2.0 BETA"
+export const APP_VERSION = "v1.3.0 BETA"
 
 interface SettingsModalProps {
   /** Google account email shown in the Google Account section */

@@ -22,8 +22,10 @@
 
 "use client"
 
+import { useEffect } from "react"
 import dynamic from "next/dynamic"
 import { useCommercialStore } from "@/lib/commercial-store"
+import { useSpotifyStore } from "@/lib/spotify-store"
 import { useExplicitFilter } from "@/lib/use-explicit-filter"
 
 // Dynamic imports with SSR disabled — required for Spotify SDK and localStorage
@@ -33,6 +35,38 @@ const CommercialPanel = dynamic(() => import("./CommercialPanel"), { ssr: false 
 export default function AppShell() {
   // Mount the explicit filter at app level so it always runs
   useExplicitFilter()
+
+  // ── Spotify token bridging from URL hash fragment ──
+  //
+  // The Spotify OAuth callback runs on http://127.0.0.1:3000 (Spotify
+  // requires 127.0.0.1 for non-HTTPS redirect URIs) while the main app
+  // and NextAuth session live on http://localhost:3000. These are different
+  // browser origins, so cookies and storage are NOT shared between them.
+  //
+  // To bridge the gap, the callback page (app/spotify-callback/page.tsx)
+  // base64-encodes the tokens into a URL hash fragment and redirects here:
+  //   http://localhost:3000/#spotify_tokens=<base64-encoded JSON>
+  //
+  // This effect runs once on mount, checks for that hash fragment, decodes
+  // the tokens, stores them in the Zustand spotify-store (in-memory only),
+  // and removes the hash from the URL to keep it clean. Hash fragments are
+  // never sent to the server, so tokens remain client-side only.
+  const setTokens = useSpotifyStore((s) => s.setTokens)
+  useEffect(() => {
+    const hash = window.location.hash
+    if (hash.includes("spotify_tokens=")) {
+      try {
+        const encoded = hash.split("spotify_tokens=")[1]
+        const tokens = JSON.parse(atob(encoded))
+        setTokens(tokens)
+        // Remove the hash fragment without triggering a page reload or
+        // adding a new entry to the browser's history stack.
+        history.replaceState(null, "", window.location.pathname)
+      } catch (err) {
+        console.error("Failed to parse Spotify tokens from URL hash:", err)
+      }
+    }
+  }, [setTokens])
 
   // Read announcement status to dim/disable the Spotify panel during playback
   const status = useCommercialStore((s) => s.status)

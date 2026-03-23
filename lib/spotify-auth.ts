@@ -7,19 +7,37 @@
  *
  * Flow overview:
  *   1. initiateSpotifyAuth() — generates a random code_verifier, hashes it
- *      into a code_challenge, stores the verifier in sessionStorage, then
- *      redirects the browser to Spotify's /authorize endpoint.
- *   2. Spotify redirects back to /spotify-callback with a ?code= param.
- *   3. exchangeCodeForToken() — sends the code + the stored verifier to
- *      Spotify's /api/token endpoint to receive access + refresh tokens.
- *   4. Tokens are stored in the Zustand spotify-store (in memory only).
- *      They are NOT persisted to localStorage — each page load requires
+ *      into a code_challenge, base64-encodes the verifier into the OAuth
+ *      `state` parameter, then redirects to Spotify's /authorize endpoint.
+ *   2. Spotify redirects back to /spotify-callback with ?code= and ?state=
+ *      query params. The callback page runs on 127.0.0.1 (Spotify's
+ *      redirect URI requirement for non-HTTPS dev environments).
+ *   3. exchangeCodeForToken() — decodes the verifier from the `state` param
+ *      and sends code + verifier to Spotify's /api/token endpoint to get
+ *      access + refresh tokens.
+ *   4. The callback page encodes tokens into a URL hash fragment and
+ *      redirects from 127.0.0.1 to localhost:3000 to bridge the origin gap
+ *      (the NextAuth session cookie is bound to localhost).
+ *   5. AppShell.tsx reads tokens from the hash fragment, stores them in the
+ *      Zustand spotify-store (in memory only), and clears the hash.
+ *      Tokens are NOT persisted to localStorage — each page load requires
  *      re-authentication via the Connect Spotify button.
- *   5. refreshAccessToken() is called by use-spotify-player.ts when the
+ *   6. refreshAccessToken() is called by use-spotify-player.ts when the
  *      access token is within 60 seconds of expiry.
  *
- * Environment variable required:
- *   NEXT_PUBLIC_SPOTIFY_CLIENT_ID — from the Spotify Developer Dashboard
+ * Why the state parameter instead of sessionStorage/localStorage?
+ *   The OAuth flow crosses origins: it starts on localhost:3000, Spotify
+ *   redirects back to 127.0.0.1:3000. Even though these resolve to the
+ *   same machine, browsers treat them as different origins — localStorage
+ *   and sessionStorage are NOT shared between them. Encoding the verifier
+ *   in the OAuth `state` parameter avoids any storage-based origin issues.
+ *   Spotify echoes the `state` value back unchanged on the callback URL.
+ *
+ * Environment variables required:
+ *   NEXT_PUBLIC_SPOTIFY_CLIENT_ID    — from the Spotify Developer Dashboard
+ *   NEXT_PUBLIC_SPOTIFY_REDIRECT_URI — must exactly match a URI registered in the Dashboard
+ *     Dev:  http://127.0.0.1:3000/spotify-callback
+ *     Prod: https://yourdomain.com/spotify-callback
  *
  * Note: The Spotify app must be in "Extended Quota Mode" or have the
  * connecting user added as a Development User in the Dashboard for API
@@ -31,11 +49,9 @@
 const SPOTIFY_CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID!
 
 // redirect_uri must exactly match one of the URIs registered in the
-// Spotify Developer Dashboard (both localhost and the production URL).
-const REDIRECT_URI =
-  typeof window !== "undefined"
-    ? `${window.location.origin}/spotify-callback`
-    : ""
+// Spotify Developer Dashboard. Set via NEXT_PUBLIC_SPOTIFY_REDIRECT_URI
+// in .env.local (dev) or the hosting provider's env config (production).
+const REDIRECT_URI = process.env.NEXT_PUBLIC_SPOTIFY_REDIRECT_URI!
 
 // Scopes define what the app is allowed to do on the user's Spotify account.
 // "streaming" + "user-read-private" + "user-read-email" are required for the
@@ -77,8 +93,10 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 
 /**
  * Starts the Spotify OAuth flow by redirecting the browser to Spotify's
- * /authorize page. The code_verifier is saved in sessionStorage so
- * exchangeCodeForToken() can retrieve it after the redirect back.
+ * /authorize page. The PKCE code_verifier is base64-encoded into the OAuth
+ * `state` parameter so it survives the cross-origin redirect chain
+ * (localhost -> Spotify -> 127.0.0.1) without relying on browser storage,
+ * which is not shared between localhost and 127.0.0.1.
  *
  * @param options.showDialog — Pass true to force Spotify to show the account
  *   chooser even if the user is already logged in. Used by the "Switch Account"
@@ -88,15 +106,21 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 export async function initiateSpotifyAuth(options?: { showDialog?: boolean }): Promise<void> {
   const verifier = generateCodeVerifier(128)
   const challenge = await generateCodeChallenge(verifier)
-  sessionStorage.setItem("spotify_code_verifier", verifier)
+
+  // Pass the verifier via the OAuth state parameter so it survives the
+  // redirect chain regardless of origin changes (localhost vs 127.0.0.1)
+  // or browser storage quirks. The state is returned unchanged by Spotify
+  // in the callback URL's ?state= query param.
+  const state = btoa(verifier)
 
   const params = new URLSearchParams({
     client_id: SPOTIFY_CLIENT_ID,
     response_type: "code",
-    redirect_uri: `${window.location.origin}/spotify-callback`,
+    redirect_uri: REDIRECT_URI,
     code_challenge_method: "S256",
     code_challenge: challenge,
     scope: SCOPES,
+    state,
     // show_dialog=true forces the Spotify account chooser screen, enabling
     // users to switch to a different Spotify account mid-session.
     ...(options?.showDialog ? { show_dialog: "true" } : {}),
@@ -108,19 +132,22 @@ export async function initiateSpotifyAuth(options?: { showDialog?: boolean }): P
 /**
  * Completes the OAuth flow by exchanging the authorization code (from the
  * ?code= query param on the callback page) for access and refresh tokens.
- * The code_verifier is read from sessionStorage and then deleted.
+ * The PKCE code_verifier is decoded from the OAuth `state` parameter, which
+ * Spotify echoes back unchanged in the callback URL's ?state= query param.
  *
  * Called by /app/spotify-callback/page.tsx immediately after the redirect.
+ * At this point we're running on 127.0.0.1 (Spotify's redirect target).
  */
-export async function exchangeCodeForToken(code: string): Promise<SpotifyTokens> {
-  const verifier = sessionStorage.getItem("spotify_code_verifier")
-  if (!verifier) throw new Error("Missing PKCE code verifier")
+export async function exchangeCodeForToken(code: string, state: string): Promise<SpotifyTokens> {
+  // Recover the PKCE verifier from the OAuth state parameter
+  const verifier = atob(state)
+  if (!verifier) throw new Error("Missing PKCE code verifier in state")
 
   const body = new URLSearchParams({
     client_id: SPOTIFY_CLIENT_ID,
     grant_type: "authorization_code",
     code,
-    redirect_uri: `${window.location.origin}/spotify-callback`,
+    redirect_uri: REDIRECT_URI,
     code_verifier: verifier,
   })
 
@@ -136,7 +163,6 @@ export async function exchangeCodeForToken(code: string): Promise<SpotifyTokens>
   }
 
   const data = await res.json()
-  sessionStorage.removeItem("spotify_code_verifier") // clean up immediately
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
@@ -180,7 +206,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<SpotifyT
  */
 export function clearSpotifyTokens(): void {
   localStorage.removeItem("spotify_tokens")
-  sessionStorage.removeItem("spotify_code_verifier")
+  localStorage.removeItem("spotify_code_verifier")
 }
 
 /** Shape of the Spotify token bundle stored in the Zustand spotify-store. */
