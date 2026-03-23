@@ -127,3 +127,85 @@ export async function seekToPosition(
     }
   )
 }
+
+/**
+ * Search result track shape from the Spotify /v1/search endpoint.
+ *
+ * Deliberately mirrors the same fields as QueueTrack in spotify-store.ts
+ * (id, uri, name, artists, explicit, albumArt, duration) so that the
+ * TrackRow component in SpotifyPanel can render search results and queue
+ * items interchangeably without conditional field mapping.
+ *
+ * The `artists` field is pre-joined into a comma-separated string rather
+ * than kept as an array — this matches what QueueTrack already stores and
+ * avoids repeated .map().join() calls at render time.
+ */
+export interface SearchTrack {
+  id: string                      // Spotify track ID
+  uri: string                     // Full Spotify URI (e.g. "spotify:track:...")
+  name: string                    // Track title
+  artists: string                 // Comma-separated artist names (pre-joined)
+  explicit: boolean               // Explicit content flag (used by the skip filter)
+  albumArt: string                // URL of the first album image (largest available)
+  duration: number                // Track length in milliseconds
+}
+
+/**
+ * Searches the Spotify catalog for tracks matching the given query.
+ *
+ * Only searches type=track — podcasts, audiobooks, and episodes are excluded
+ * because NSBP Radio is a music-only player. The Spotify Search API returns
+ * results ranked by relevance, which works well for the "play a specific song"
+ * use case at the bike park.
+ *
+ * The raw Spotify response shape is deeply nested (artists as objects, album
+ * images as arrays, duration as `duration_ms`). This function flattens it into
+ * our SearchTrack interface so the UI layer never deals with raw API shapes.
+ *
+ * @param accessToken — OAuth access token from the Zustand store
+ * @param query       — Free-text search string (artist, track name, etc.)
+ * @param limit       — Max results to return (1–50, default 20)
+ * @returns Flattened SearchTrack array ready for TrackRow rendering
+ */
+export async function searchTracks(
+  accessToken: string,
+  query: string,
+  limit: number = 20
+): Promise<SearchTrack[]> {
+  // encodeURIComponent handles special characters in user input (quotes, ampersands, etc.)
+  const q = encodeURIComponent(query)
+
+  const res = await fetch(`https://api.spotify.com/v1/search?q=${q}&type=track`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  if (!res.ok) throw new Error(`Spotify search failed: ${res.status}`)
+
+  const data = await res.json()
+  // Defensive fallback — data.tracks may be missing on malformed responses
+  const items = data.tracks?.items ?? []
+
+  // Map Spotify's verbose response into our flat SearchTrack shape.
+  // Each field is chosen to match QueueTrack so TrackRow renders both identically.
+  return items.map((track: {
+    id: string
+    uri: string
+    name: string
+    artists: { name: string }[]
+    explicit: boolean
+    album: { images: { url: string }[] }
+    duration_ms: number
+  }) => ({
+    id: track.id,
+    uri: track.uri,
+    name: track.name,
+    // Pre-join artist names — avoids repeated joins in render cycles
+    artists: track.artists.map((a: { name: string }) => a.name).join(", "),
+    explicit: track.explicit,
+    // Spotify returns images sorted largest-first; [0] gives the best quality.
+    // Falls back to empty string if no art exists (TrackRow renders a grey box).
+    albumArt: track.album.images?.[0]?.url ?? "",
+    // Rename from Spotify's `duration_ms` to our standard `duration` field name
+    duration: track.duration_ms,
+  }))
+}

@@ -52,14 +52,25 @@ export default async function Home() {
       >
         {/* Left: NSBP logo image + "North Shore Bike Park Radio" wordmark */}
         <div className="flex items-center gap-4">
-          {/* Logo image — priority loaded to avoid layout shift on first paint */}
+          {/*
+            Logo image — priority loaded to avoid layout shift on first paint.
+
+            sizes="224px" tells Next.js the rendered width so it generates
+            the correct srcset rather than defaulting to viewport-width breakpoints.
+
+            unoptimized bypasses Next.js Image Optimization, which causes
+            404 errors on PNG files under Turbopack in Next.js 16 dev mode.
+            The logo is already a small static asset so optimization is unnecessary.
+          */}
           <div className="relative h-[72px] w-56 shrink-0">
             <Image
               src="/nsbp-logo.png"
               alt="North Shore Bike Park"
               fill
+              sizes="224px"
               className="object-contain object-left"
               priority
+              unoptimized
             />
           </div>
           {/* Wordmark: white "North Shore Bike Park" + brand-orange "Radio" */}

@@ -1,3 +1,25 @@
+/**
+ * SpotifyPanel.tsx — The left-hand panel: player, playlists, search, and queue.
+ *
+ * This is the main music control surface for NSBP Radio. It renders:
+ *   1. Now Playing card — album art, track info, progress bar, transport controls
+ *   2. Tab bar — switches between Playlists and Search views
+ *   3. Playlists tab — playlist selector dropdown + Up Next queue
+ *   4. Search tab — Spotify catalog search with Queue / Play Now actions
+ *
+ * Architecture notes:
+ * - The component initialises three hooks on mount: useSpotifyPlayer (creates
+ *   the Spotify Web Playback SDK instance), useQueue (polls Spotify's queue
+ *   endpoint), and usePlayHistory (tracks play counts for repeat detection).
+ * - State is split between two Zustand stores: useSpotifyStore (tokens, player,
+ *   queue, playback state) and useCommercialStore (announcement scheduling).
+ * - Search results and queue tracks share the same TrackRow component because
+ *   SearchTrack and QueueTrack have identical shapes by design.
+ * - The queuedSearchTrack state tracks a single search result that has been
+ *   added to Spotify's queue, so it can be displayed in the Up Next box alongside
+ *   announcements and Closing Time. It is cleared when the track starts playing
+ *   or when an announcement takes priority.
+ */
 "use client"
 
 import { useEffect, useState, useRef } from "react"
@@ -13,7 +35,9 @@ import {
   fetchUserPlaylists,
   playPlaylist,
   transferPlayback,
+  searchTracks,
   SpotifyPlaylist,
+  SearchTrack,
 } from "@/lib/spotify-api"
 
 export default function SpotifyPanel() {
@@ -37,6 +61,18 @@ export default function SpotifyPanel() {
   const [loadingPlaylists, setLoadingPlaylists] = useState(false)
   const [progress, setProgress] = useState(0)
   const [micActive, setMicActive] = useState(false)
+  // ── Search & tab state ──
+  // activeTab controls which content renders below the Now Playing card
+  const [activeTab, setActiveTab] = useState<"playlists" | "search">("playlists")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<SearchTrack[]>([])
+  const [searching, setSearching] = useState(false)
+  // Tracks the single search result currently sitting in Spotify's queue.
+  // Only one item can be queued at a time (matching announcement behaviour).
+  // Displayed in the Up Next box on the Playlists tab and shown with an
+  // orange tint in search results. Cleared when the track starts playing
+  // or an announcement takes priority.
+  const [queuedSearchTrack, setQueuedSearchTrack] = useState<SearchTrack | null>(null)
   const micFading = useRef(false)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -77,11 +113,16 @@ export default function SpotifyPanel() {
     return () => clearInterval(id)
   }, [micActive, player])
 
-  // Transfer playback to this device once ready
+  // Transfer playback to this device once ready.
+  // The SDK may report "ready" slightly before the device is registered on
+  // Spotify's servers, causing a 404. Retry once after a short delay.
   useEffect(() => {
-    if (isReady && deviceId && tokens) {
-      transferPlayback(tokens.accessToken, deviceId).catch(console.error)
-    }
+    if (!isReady || !deviceId || !tokens) return
+    transferPlayback(tokens.accessToken, deviceId).catch(() => {
+      setTimeout(() => {
+        transferPlayback(tokens.accessToken, deviceId).catch(() => {})
+      }, 2000)
+    })
   }, [isReady, deviceId, tokens])
 
   // Fetch playlists + account info once connected
@@ -100,6 +141,27 @@ export default function SpotifyPanel() {
       .then((u) => setSpotifyUser({ displayName: u.display_name ?? u.id, email: u.email ?? "" }))
       .catch(console.error)
   }, [tokens]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Effects to clear the queued search track ──
+  //
+  // The queuedSearchTrack indicator needs to be removed in two situations:
+  //
+  // 1. An announcement takes priority — only one item can occupy the "queued"
+  //    slot at a time. When an announcement is queued, it supersedes the search
+  //    track in the Up Next box, so we clear the search track to avoid showing
+  //    two queued items simultaneously.
+  useEffect(() => {
+    if (announcementStatus === "queued" && queuedAnnouncement) setQueuedSearchTrack(null)
+  }, [announcementStatus, queuedAnnouncement])
+
+  // 2. The queued track starts playing — we compare the currently playing
+  //    track URI against the queued search track's URI. When they match, the
+  //    track has left the queue and entered playback, so the indicator is stale.
+  useEffect(() => {
+    if (queuedSearchTrack && playerState?.trackUri === queuedSearchTrack.uri) {
+      setQueuedSearchTrack(null)
+    }
+  }, [playerState?.trackUri, queuedSearchTrack])
 
   // Live progress bar
   useEffect(() => {
@@ -194,6 +256,143 @@ export default function SpotifyPanel() {
     setTimeout(refreshQueue, 3000)
   }
 
+  /**
+   * Search Spotify for tracks matching the query.
+   * Called on form submit (Enter key or Search button click).
+   * Results replace any previous search results — there is no pagination,
+   * since the default 20 results from Spotify's relevance ranking are
+   * more than enough for a "find and play one song" workflow.
+   */
+  const handleSearch = async () => {
+    if (!tokens || !searchQuery.trim()) return
+    setSearching(true)
+    try {
+      const results = await searchTracks(tokens.accessToken, searchQuery.trim())
+      setSearchResults(results)
+    } catch (err) {
+      console.error("Search failed:", err)
+      setSearchResults([])
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  /**
+   * Queue a search result — adds it to Spotify's queue to play after the
+   * current track finishes. Follows the same "only one queued item" rule as
+   * announcements and Closing Time: clearQueue() removes any pending
+   * announcement, and setClosingTimeQueued(false) removes a pending Closing
+   * Time, so the search track becomes the sole occupant of the queue slot.
+   *
+   * Cold start handling: Spotify's POST /queue endpoint returns 404 when no
+   * active playback session exists. If playerState is null (nothing playing),
+   * we fall back to PUT /play with a `uris` array to start the track directly.
+   * In this case we don't set queuedSearchTrack because the track plays
+   * immediately — there's nothing to show in the "Up Next" box.
+   */
+  const handleQueueSearchResult = async (track: SearchTrack) => {
+    if (!tokens || !deviceId) return
+    // Clear any queued announcement or Closing Time — only one queued item allowed
+    clearQueue()
+    setClosingTimeQueued(false)
+
+    if (!playerState) {
+      // Cold start — no active playback, so we can't use the queue endpoint.
+      // Play the track directly via PUT /play instead.
+      await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${tokens.accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ uris: [track.uri] }),
+      })
+    } else {
+      // Active playback — use Spotify's queue endpoint so the track plays
+      // after the current song finishes, preserving the playlist context.
+      await fetch(
+        `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(track.uri)}&device_id=${deviceId}`,
+        { method: "POST", headers: { Authorization: `Bearer ${tokens.accessToken}` } }
+      )
+      // Track the queued item so it appears in the Up Next box with an
+      // orange tint, and so the Search tab shows it as "queued" (disabled buttons).
+      setQueuedSearchTrack(track)
+    }
+
+    // Staggered queue refresh — Spotify's queue endpoint lags behind changes.
+    // Three retries at increasing intervals catch it at each update stage.
+    setTimeout(refreshQueue, 500)
+    setTimeout(refreshQueue, 1500)
+    setTimeout(refreshQueue, 3000)
+  }
+
+  /**
+   * Play Now a search result — interrupts the current track immediately.
+   *
+   * Two distinct paths depending on whether music is already playing:
+   *
+   * Cold start (playerState is null):
+   *   No music is active, so we play the track directly via PUT /play.
+   *   No fade is needed because there's silence.
+   *
+   * Active playback:
+   *   Uses the "fade → queue → skip → fade" pattern (same as handlePlayFromQueue).
+   *   Why queue+skip instead of just PUT /play with a uris array? Because
+   *   PUT /play with uris[] replaces the entire playback context — the playlist
+   *   would be lost and wouldn't resume after the requested track. By queueing
+   *   the track and immediately skipping to it, the original playlist context
+   *   stays intact and resumes naturally once the search track finishes.
+   *
+   *   The 1.5-second fade (30 steps × 50ms) provides a smooth DJ-style
+   *   crossfade. Volume targets respect mic mode (10% if active, 100% otherwise).
+   */
+  const handlePlayNowSearchResult = async (trackUri: string) => {
+    if (!player || !tokens || !deviceId) return
+
+    const headers = { Authorization: `Bearer ${tokens.accessToken}` }
+    const isPlaying = !!playerState && !playerState.paused
+
+    if (!playerState) {
+      // Cold start — no active playback, play directly without fade
+      await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+        method: "PUT",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ uris: [trackUri] }),
+      })
+    } else {
+      // Active playback — fade out, queue+skip to preserve playlist context, fade in
+      const STEPS = 30
+      const DELAY = 1500 / STEPS  // ~50ms per step = 1.5s total fade
+      const startVol = micActiveRef.current ? 0.1 : 1
+      const targetVol = micActiveRef.current ? 0.1 : 1
+
+      // Fade out from current volume to silence
+      for (let i = STEPS; i >= 0; i--) {
+        player.setVolume((i / STEPS) * startVol)
+        await new Promise((r) => setTimeout(r, DELAY))
+      }
+
+      // Queue the track, then immediately skip to it.
+      // This two-step dance preserves the playlist context (see docblock above).
+      await fetch(
+        `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(trackUri)}&device_id=${deviceId}`,
+        { method: "POST", headers }
+      )
+      await fetch(
+        `https://api.spotify.com/v1/me/player/next?device_id=${deviceId}`,
+        { method: "POST", headers }
+      )
+
+      // Fade back in to the correct target volume
+      for (let i = 0; i <= STEPS; i++) {
+        player.setVolume((i / STEPS) * targetVol)
+        await new Promise((r) => setTimeout(r, DELAY))
+      }
+    }
+
+    // Staggered queue refresh — same pattern as other playback actions
+    setTimeout(refreshQueue, 500)
+    setTimeout(refreshQueue, 1500)
+    setTimeout(refreshQueue, 3000)
+  }
+
   const formatTime = (ms: number) => {
     const s = Math.floor(ms / 1000)
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
@@ -223,34 +422,6 @@ export default function SpotifyPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Playlist selector — sits above the Now Playing box */}
-      <div>
-        <label className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-2 block">
-          Playlist
-        </label>
-        {loadingPlaylists ? (
-          <p className="text-zinc-500 text-sm">Loading playlists...</p>
-        ) : (
-          <select
-            className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
-            value={selectedPlaylist?.id ?? ""}
-            onChange={(e) => {
-              const playlist = playlists.find((p) => p.id === e.target.value)
-              if (playlist) handlePlayPlaylist(playlist)
-            }}
-          >
-            <option value="" disabled>
-              Select a playlist...
-            </option>
-            {playlists.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
       {/* NOW PLAYING heading */}
       <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">
         Now Playing
@@ -369,113 +540,189 @@ export default function SpotifyPanel() {
       )}
       </div>{/* end orange box */}
 
-      {/* Up next queue */}
-      {(queue.length > 0 || (announcementStatus === "queued" && queuedAnnouncement) || closingTimeQueued) && (
-        <div>
-          <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-2">
-            Up Next
-          </h3>
+      {/* ─── Tab bar: Playlists | Search ───
+          Two tabs below the Now Playing card. The active tab gets a
+          brand-orange bottom border and text colour; inactive tabs use
+          muted zinc. Content for each tab renders conditionally below. */}
+      <div className="flex border-b border-zinc-700">
+        <button
+          onClick={() => setActiveTab("playlists")}
+          className={`flex-1 py-2 text-sm font-semibold uppercase tracking-wider transition-colors ${
+            activeTab === "playlists"
+              ? "border-b-2 text-white"
+              : "text-zinc-500 hover:text-zinc-300"
+          }`}
+          style={activeTab === "playlists" ? { borderColor: "var(--brand-orange)", color: "var(--brand-orange)" } : undefined}
+        >
+          Playlists
+        </button>
+        <button
+          onClick={() => setActiveTab("search")}
+          className={`flex-1 py-2 text-sm font-semibold uppercase tracking-wider transition-colors ${
+            activeTab === "search"
+              ? "border-b-2 text-white"
+              : "text-zinc-500 hover:text-zinc-300"
+          }`}
+          style={activeTab === "search" ? { borderColor: "var(--brand-orange)", color: "var(--brand-orange)" } : undefined}
+        >
+          Search
+        </button>
+      </div>
 
-          {/* Queue box — announcement or Closing Time queued */}
-          {((announcementStatus === "queued" && queuedAnnouncement) || closingTimeQueued) && (
-            <div
-              className="rounded-xl p-3 flex flex-col gap-2 mb-2"
-              style={{ background: "rgba(255,157,26,0.07)", border: "1px solid rgba(255,157,26,0.3)" }}
-            >
-              <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--brand-orange)" }}>
-                Queue
-              </p>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="w-2 h-2 rounded-full animate-pulse shrink-0"
-                    style={{ background: "var(--brand-orange)" }}
-                  />
-                  <span className="text-zinc-200 text-sm font-medium truncate">
-                    {closingTimeQueued ? "Closing Time" : queuedAnnouncement!.file.displayName}
-                  </span>
-                </div>
-                <button
-                  onClick={() => {
-                    clearQueue()
-                    // If Closing Time was queued, mark it for auto-skip since Spotify's
-                    // API has no way to remove an item from the user queue once added.
-                    if (closingTimeQueued) setClosingTimeRemoved(true)
-                    setClosingTimeQueued(false)
-                  }}
-                  className="text-xs shrink-0 px-2 py-1 rounded transition-colors hover:text-white"
-                  style={{ color: "var(--brand-orange)", border: "1px solid rgba(255,157,26,0.4)" }}
-                  title="Remove from queue"
+      {/* ─── PLAYLISTS TAB ─── */}
+      {activeTab === "playlists" && (
+        <>
+          {/* Playlist selector */}
+          <div>
+            <label className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-2 block">
+              Playlist
+            </label>
+            {loadingPlaylists ? (
+              <p className="text-zinc-500 text-sm">Loading playlists...</p>
+            ) : (
+              <select
+                className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
+                value={selectedPlaylist?.id ?? ""}
+                onChange={(e) => {
+                  const playlist = playlists.find((p) => p.id === e.target.value)
+                  if (playlist) handlePlayPlaylist(playlist)
+                }}
+              >
+                <option value="" disabled>
+                  Select a playlist...
+                </option>
+                {playlists.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Up Next queue — shown when there are tracks in the Spotify queue,
+              a queued announcement, a queued Closing Time, or a queued search track.
+              The Queue box at the top displays the single "priority" queued item
+              (announcement, Closing Time, or search track — only one at a time),
+              while the track list below shows Spotify's upcoming queue tracks. */}
+          {(queue.length > 0 || (announcementStatus === "queued" && queuedAnnouncement) || closingTimeQueued || queuedSearchTrack) && (
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-2">
+                Up Next
+              </h3>
+
+              {/* Queue box — announcement, Closing Time, or search track queued */}
+              {((announcementStatus === "queued" && queuedAnnouncement) || closingTimeQueued || queuedSearchTrack) && (
+                <div
+                  className="rounded-xl p-3 flex flex-col gap-2 mb-2"
+                  style={{ background: "rgba(255,157,26,0.07)", border: "1px solid rgba(255,157,26,0.3)" }}
                 >
-                  Remove
-                </button>
+                  <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--brand-orange)" }}>
+                    Queue
+                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="w-2 h-2 rounded-full animate-pulse shrink-0"
+                        style={{ background: "var(--brand-orange)" }}
+                      />
+                      <span className="text-zinc-200 text-sm font-medium truncate">
+                        {closingTimeQueued
+                          ? "Closing Time"
+                          : queuedSearchTrack
+                          ? `${queuedSearchTrack.name} — ${queuedSearchTrack.artists}`
+                          : queuedAnnouncement!.file.displayName}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        clearQueue()
+                        if (closingTimeQueued) setClosingTimeRemoved(true)
+                        setClosingTimeQueued(false)
+                        setQueuedSearchTrack(null)
+                      }}
+                      className="text-xs shrink-0 px-2 py-1 rounded transition-colors hover:text-white"
+                      style={{ color: "var(--brand-orange)", border: "1px solid rgba(255,157,26,0.4)" }}
+                      title="Remove from queue"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                {queue.map((track, i) => (
+                  <TrackRow
+                    key={`${track.uri}-${i}`}
+                    track={track}
+                    onPlay={() => handlePlayFromQueue(track.uri)}
+                    formatTime={formatTime}
+                    showPlayCount
+                  />
+                ))}
               </div>
             </div>
           )}
+        </>
+      )}
 
-          <div className="space-y-1">
-            {queue.map((track, i) => (
-              <div
-                key={`${track.uri}-${i}`}
-                onClick={() => !track.explicit && handlePlayFromQueue(track.uri)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${
-                  track.explicit
-                    ? "opacity-40 cursor-default border-transparent"
-                    : "hover-brand bg-zinc-800/40 border-zinc-700/50 cursor-pointer"
-                }`}
-                title={track.explicit ? "Explicit — will be skipped automatically" : "Click to play"}
-              >
-                {/* Small album art */}
-                {track.albumArt ? (
-                  <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden">
-                    <Image
-                      src={track.albumArt}
-                      alt={track.name}
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-8 h-8 rounded shrink-0 bg-zinc-700" />
-                )}
+      {/* ─── SEARCH TAB ───
+          Spotify catalog search. The form submits on Enter or button click.
+          Results render as TrackRow components with showActions=true, which
+          adds Queue and Play Now buttons (hidden in queue mode). The isQueued
+          prop highlights the row with an orange tint and disables both buttons
+          when the track is already in the queue, matching the CommercialCard
+          "queued" visual state. */}
+      {activeTab === "search" && (
+        <>
+          {/* Search input — form wrapper enables Enter key submission */}
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSearch() }}
+            className="flex gap-2"
+          >
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search for a song or artist..."
+              className="flex-1 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-500 placeholder:text-zinc-500"
+            />
+            <button
+              type="submit"
+              disabled={searching || !searchQuery.trim()}
+              className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-default"
+              style={{ background: "var(--brand-orange)", color: "#000" }}
+            >
+              {searching ? "..." : "Search"}
+            </button>
+          </form>
 
-                {/* Track info */}
-                <div className="flex-1 min-w-0">
-                  <p
-                    className={`text-sm leading-tight truncate ${
-                      track.explicit
-                        ? "line-through text-zinc-500"
-                        : "text-white"
-                    }`}
-                  >
-                    {track.name}
-                  </p>
-                  <p className="text-xs text-zinc-500 truncate">{track.artists}</p>
-                </div>
+          {/* Search results */}
+          {searching && (
+            <p className="text-zinc-500 text-sm">Searching Spotify...</p>
+          )}
 
-                {/* Explicit badge */}
-                {track.explicit && (
-                  <span
-                    className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded bg-zinc-700 text-zinc-400"
-                    title="Explicit — will be skipped"
-                  >
-                    E
-                  </span>
-                )}
+          {!searching && searchResults.length > 0 && (
+            <div className="space-y-1">
+              {searchResults.map((track, i) => (
+                <TrackRow
+                  key={`${track.uri}-${i}`}
+                  track={track}
+                  onQueue={() => handleQueueSearchResult(track)}
+                  onPlayNow={() => handlePlayNowSearchResult(track.uri)}
+                  formatTime={formatTime}
+                  showActions
+                  isQueued={queuedSearchTrack?.uri === track.uri}
+                />
+              ))}
+            </div>
+          )}
 
-                {/* Play count badge */}
-                {!track.explicit && (
-                  <PlayCountBadge uri={track.uri} />
-                )}
-
-                {/* Duration — always rightmost */}
-                <span className="shrink-0 text-xs text-zinc-500 tabular-nums">
-                  {formatTime(track.duration)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+          {!searching && searchResults.length === 0 && searchQuery && (
+            <p className="text-zinc-500 text-sm text-center py-4">No results found.</p>
+          )}
+        </>
       )}
     </div>
   )
@@ -536,6 +783,135 @@ function PlayCountBadge({ uri }: { uri: string }) {
     >
       {today}×
     </span>
+  )
+}
+
+/**
+ * Reusable track row used in both the Up Next queue and Search results.
+ *
+ * This is the shared visual building block for all track listings. It adapts
+ * its appearance and interaction model based on two key props:
+ *
+ * - showActions=false (queue mode): The entire row is clickable (triggers onPlay).
+ *   No Queue/Play Now buttons are shown. A play count badge appears on the right.
+ *   This is how tracks appear in the Up Next list on the Playlists tab.
+ *
+ * - showActions=true (search mode): Row click is disabled. Queue and Play Now
+ *   buttons appear on the right side. When isQueued=true, both buttons are
+ *   disabled and the row gets an orange tint border + background — matching
+ *   the CommercialCard "queued" visual state so the entire app has a consistent
+ *   "this item is pending" look.
+ *
+ * Explicit tracks are shown with reduced opacity, strikethrough text, and an "E"
+ * badge. They are non-interactive in both modes because the explicit filter will
+ * auto-skip them during playback anyway.
+ *
+ * @param track       — Track data (matches both QueueTrack and SearchTrack shapes)
+ * @param onPlay      — Called on row click in queue mode (play this track now)
+ * @param onQueue     — Called by Queue button in search mode
+ * @param onPlayNow   — Called by Play Now button in search mode
+ * @param formatTime  — Formats milliseconds to "M:SS" for the duration label
+ * @param showPlayCount — Show the play count badge (queue mode only)
+ * @param showActions — Show Queue / Play Now buttons (search mode only)
+ * @param isQueued    — Orange highlight + disabled buttons when true
+ */
+function TrackRow({
+  track,
+  onPlay,
+  onQueue,
+  onPlayNow,
+  formatTime,
+  showPlayCount = false,
+  showActions = false,
+  isQueued = false,
+}: {
+  track: { uri: string; name: string; artists: string; explicit: boolean; albumArt: string; duration: number }
+  onPlay?: () => void
+  onQueue?: () => void
+  onPlayNow?: () => void
+  formatTime: (ms: number) => string
+  showPlayCount?: boolean
+  showActions?: boolean
+  isQueued?: boolean
+}) {
+  // Row styling mirrors CommercialCard's three visual states:
+  // 1. Explicit → faded out (opacity-40), non-interactive
+  // 2. Queued → orange tint border + background (applied via inline style below)
+  // 3. Normal → hover-brand class gives an orange border on hover
+  const rowClass = track.explicit
+    ? "opacity-40 cursor-default border-transparent"
+    : isQueued
+    ? "" // styled via inline style below (matches announcement queued state)
+    : showActions
+    ? "border border-zinc-700/60 bg-zinc-800/40 hover-brand"
+    : "hover-brand bg-zinc-800/40 border-zinc-700/50 cursor-pointer"
+
+  const rowStyle = isQueued && !track.explicit
+    ? { border: "1px solid rgba(255,157,26,0.35)", background: "rgba(255,157,26,0.07)" }
+    : undefined
+
+  return (
+    <div
+      onClick={() => !track.explicit && !showActions && onPlay?.()}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${rowClass}`}
+      style={rowStyle}
+      title={track.explicit ? "Explicit — will be skipped automatically" : showActions ? undefined : "Click to play"}
+    >
+      {/* Small album art */}
+      {track.albumArt ? (
+        <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden">
+          <Image src={track.albumArt} alt={track.name} fill className="object-cover" />
+        </div>
+      ) : (
+        <div className="w-8 h-8 rounded shrink-0 bg-zinc-700" />
+      )}
+
+      {/* Track info */}
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm leading-tight truncate ${track.explicit ? "line-through text-zinc-500" : "text-white"}`}>
+          {track.name}
+        </p>
+        <p className="text-xs text-zinc-500 truncate">{track.artists}</p>
+      </div>
+
+      {/* Explicit badge */}
+      {track.explicit && (
+        <span className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded bg-zinc-700 text-zinc-400" title="Explicit — will be skipped">
+          E
+        </span>
+      )}
+
+      {/* Action buttons (search results only).
+          Queue: adds to Spotify's queue → plays after current track finishes.
+          Play Now: fade→queue→skip to interrupt current track immediately.
+          Both are disabled when isQueued=true to prevent double-queueing. */}
+      {showActions && !track.explicit && (
+        <div className="flex gap-1.5 shrink-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); onQueue?.() }}
+            disabled={isQueued}
+            className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            title="Add to queue — plays after current song"
+          >
+            Queue
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onPlayNow?.() }}
+            disabled={isQueued}
+            className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            title="Play now — fades out current track, plays this song, then resumes playlist"
+          >
+            Play Now
+          </button>
+        </div>
+      )}
+
+      {/* Play count badge (queue only, not search results) */}
+      {showPlayCount && !track.explicit && <PlayCountBadge uri={track.uri} />}
+
+      {/* Duration */}
+      <span className="shrink-0 text-xs text-zinc-500 tabular-nums">{formatTime(track.duration)}</span>
+    </div>
   )
 }
 
