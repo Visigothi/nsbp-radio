@@ -47,9 +47,13 @@ import { exchangeCodeForToken } from "@/lib/spotify-auth"
  * If no tokens (error case), redirects to the app root without a hash.
  */
 function redirectToApp(tokens?: { accessToken: string; refreshToken: string; expiresAt: number }) {
-  // Build the localhost URL using the same protocol and port as the current
-  // page, but swap the hostname from 127.0.0.1 to localhost.
-  const base = `${window.location.protocol}//localhost:${window.location.port}/`
+  // In development: swap 127.0.0.1 → localhost (token bridging across origins).
+  // In production: both the callback and the app are on the same origin, so
+  // use NEXTAUTH_URL if available, otherwise just swap the hostname.
+  const isLocalDev = window.location.hostname === "127.0.0.1"
+  const base = isLocalDev
+    ? `${window.location.protocol}//localhost:${window.location.port}/`
+    : `${window.location.origin}/`
   if (tokens) {
     const encoded = btoa(JSON.stringify(tokens))
     window.location.href = `${base}#spotify_tokens=${encoded}`
