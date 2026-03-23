@@ -73,3 +73,38 @@ The `/spotify-callback` route is excluded from the auth middleware matcher. Beca
 | `proxy.ts` | Auth middleware; excludes spotify-callback from protection |
 | `next.config.ts` | allowedDevOrigins for 127.0.0.1 cross-origin support |
 | `.env.local` | All OAuth secrets and redirect URIs with origin explanations |
+
+## Deployment Guidelines
+
+### Never hardcode origins or hostnames
+
+Always derive URLs from `window.location.origin`, environment variables, or `NEXTAUTH_URL`. Never use `localhost` or `127.0.0.1` in production code paths. Those strings should only appear inside dev-only branches guarded by environment detection.
+
+### Pre-deploy checklist
+
+Before running `vercel --prod`:
+
+1. Verify all new `NEXT_PUBLIC_*` env vars exist in the Vercel dashboard (Settings → Environment Variables).
+2. Verify no `localhost` or `127.0.0.1` strings exist in production code paths — use environment detection instead.
+3. Verify any new OAuth redirect URIs are registered in the relevant dashboard (Google Cloud Console, Spotify Developer Dashboard).
+4. Test the build locally with `npx next build` before deploying.
+
+### Environment-aware code patterns
+
+- Use `process.env.NODE_ENV` or origin detection (`window.location.hostname === "127.0.0.1"`) to branch dev vs prod behaviour.
+- Use `.env.local` for dev-only values; Vercel dashboard env vars for production.
+- `NEXT_PUBLIC_*` vars are baked into the client bundle at build time — changing them in Vercel requires a redeploy.
+
+### Current production environment variables
+
+| Variable | Value / Notes |
+|---|---|
+| `AUTH_SECRET` | (secret) |
+| `NEXTAUTH_URL` | `https://nsbp-radio.vercel.app` |
+| `GOOGLE_CLIENT_ID` | (secret) |
+| `GOOGLE_CLIENT_SECRET` | (secret) |
+| `ALLOWED_EMAILS` | (secret) |
+| `NEXT_PUBLIC_SPOTIFY_CLIENT_ID` | (public) |
+| `NEXT_PUBLIC_SPOTIFY_REDIRECT_URI` | `https://nsbp-radio.vercel.app/spotify-callback` |
+| `NEXT_PUBLIC_GOOGLE_API_KEY` | (public) |
+| `NEXT_PUBLIC_DEFAULT_DRIVE_FOLDER_ID` | (public) |
