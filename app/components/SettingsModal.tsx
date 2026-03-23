@@ -17,7 +17,8 @@
  * ESC key support is omitted for simplicity — backdrop click suffices.
  */
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { createPortal } from "react-dom"
 import SpotifyAccountSection from "./SpotifyAccountSection"
 import { useCommercialStore } from "@/lib/commercial-store"
 
@@ -47,8 +48,8 @@ export default function SettingsModal({ email, signOutAction }: SettingsModalPro
         <GearIcon />
       </button>
 
-      {/* Modal overlay */}
-      {open && (
+      {/* Modal overlay — rendered via portal to escape header's stacking context (backdropFilter creates a new containing block that traps fixed positioning) */}
+      {open && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop — click to close */}
           <div
@@ -56,12 +57,13 @@ export default function SettingsModal({ email, signOutAction }: SettingsModalPro
             onClick={() => setOpen(false)}
           />
 
-          {/* Dialog panel */}
+          {/* Dialog panel — max height keeps it within the viewport; overflow-y scrolls internally */}
           <div
-            className="relative z-10 w-full max-w-md rounded-2xl p-6 shadow-2xl"
+            className="relative z-10 w-full max-w-md rounded-2xl p-6 shadow-2xl overflow-y-auto"
             style={{
               background: "rgba(18,18,18,0.97)",
               border: "1px solid rgba(255,157,26,0.25)",
+              maxHeight: "calc(100vh - 2rem)",
             }}
           >
             {/* Modal header */}
@@ -140,7 +142,8 @@ export default function SettingsModal({ email, signOutAction }: SettingsModalPro
             */}
             <SpotifyAccountSection />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   )
