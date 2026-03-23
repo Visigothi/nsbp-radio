@@ -64,9 +64,17 @@ export function useQueue() {
       if (!res.ok) throw new Error(`Queue fetch failed: ${res.status}`)
       const data = await res.json()
 
+      // The currently playing track URI — used to filter it out of the queue.
+      // When a track is played standalone (e.g. from search via PUT /play with uris[]),
+      // Spotify may echo it back in the queue response. It shouldn't appear in
+      // "Up Next" since it's already playing in the Now Playing section.
+      const currentUri = data.currently_playing?.uri
+
       const tracks: QueueTrack[] = (data.queue ?? [])
         // Exclude podcast episodes, ads, and other non-track items
         .filter((t: { type: string }) => t.type === "track")
+        // Exclude the currently playing track — it's already shown in Now Playing
+        .filter((t: { uri: string }) => t.uri !== currentUri)
         // Exclude Closing Time — it has a dedicated hardcoded section
         .filter((t: { uri: string }) => t.uri !== CLOSING_TIME_URI)
         .map(
