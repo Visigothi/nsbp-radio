@@ -27,14 +27,16 @@ import dynamic from "next/dynamic"
 import { useCommercialStore } from "@/lib/commercial-store"
 import { useSpotifyStore } from "@/lib/spotify-store"
 import { useExplicitFilter } from "@/lib/use-explicit-filter"
+import { useSkippedFilter } from "@/lib/use-skipped-filter"
 
 // Dynamic imports with SSR disabled — required for Spotify SDK and localStorage
 const SpotifyPanel = dynamic(() => import("./SpotifyPanel"), { ssr: false })
 const CommercialPanel = dynamic(() => import("./CommercialPanel"), { ssr: false })
 
 export default function AppShell() {
-  // Mount the explicit filter at app level so it always runs
+  // Mount both auto-skip filters at app level so they always run
   useExplicitFilter()
+  useSkippedFilter()
 
   // ── Spotify token bridging from URL hash fragment ──
   //

@@ -31,6 +31,7 @@ import { useQueue } from "@/lib/use-queue"
 import { usePlayHistory } from "@/lib/use-play-history"
 import { getPlayCounts, PlayCounts } from "@/lib/play-history"
 import { initiateSpotifyAuth, clearSpotifyTokens } from "@/lib/spotify-auth"
+import { getSkippedUris, skipTrack, unskipTrack } from "@/lib/skipped-tracks"
 import {
   fetchUserPlaylists,
   playPlaylist,
@@ -61,6 +62,9 @@ export default function SpotifyPanel() {
   const [loadingPlaylists, setLoadingPlaylists] = useState(false)
   const [progress, setProgress] = useState(0)
   const [micActive, setMicActive] = useState(false)
+  // Set of Spotify track URIs that staff have manually skipped for today.
+  // Initialised from localStorage (with automatic 6AM daily reset via getSkippedUris).
+  const [skippedUris, setSkippedUris] = useState<Set<string>>(() => getSkippedUris())
   // ── Search & tab state ──
   // activeTab controls which content renders below the Now Playing card
   const [activeTab, setActiveTab] = useState<"playlists" | "search">("playlists")
@@ -99,6 +103,25 @@ export default function SpotifyPanel() {
       setMicActive(false)
     }
     micFading.current = false
+  }
+
+  /**
+   * Toggles a track's skipped state. Skipped tracks are dimmed in the Up Next
+   * list and auto-skipped by useSkippedFilter when they come up in playback.
+   * The skip list resets at 6AM daily via skipped-tracks.ts.
+   */
+  const handleSkipToggle = (uri: string) => {
+    setSkippedUris((prev) => {
+      const next = new Set(prev)
+      if (next.has(uri)) {
+        unskipTrack(uri)
+        next.delete(uri)
+      } else {
+        skipTrack(uri)
+        next.add(uri)
+      }
+      return next
+    })
   }
 
   // Continuously enforce 10% volume while mic is active.
@@ -657,8 +680,10 @@ export default function SpotifyPanel() {
                     key={`${track.uri}-${i}`}
                     track={track}
                     onPlay={() => handlePlayFromQueue(track.uri)}
+                    onSkipToggle={() => handleSkipToggle(track.uri)}
                     formatTime={formatTime}
                     showPlayCount
+                    isSkipped={skippedUris.has(track.uri)}
                   />
                 ))}
               </div>
@@ -815,101 +840,151 @@ function PlayCountBadge({ uri }: { uri: string }) {
  * @param showActions — Show Queue / Play Now buttons (search mode only)
  * @param isQueued    — Orange highlight + disabled buttons when true
  */
+/**
+ * Reusable track row used in both the Up Next queue and Search results.
+ *
+ * Adapts its appearance and interaction model based on props:
+ *
+ * - showActions=false (queue mode): Entire row is clickable (triggers onPlay).
+ *   No Queue/Play Now buttons. Play count badge, Skip/Add button, and duration
+ *   appear on the right. Skipped tracks are dimmed and non-interactive.
+ *
+ * - showActions=true (search mode): Row click disabled. Queue and Play Now
+ *   buttons appear on the right. No Skip button (skip is queue-mode only).
+ *
+ * Visual states for queue tracks (priority order):
+ *   1. Explicit  → left content opacity-40, strikethrough, "E" badge, non-clickable
+ *   2. Skipped   → left content opacity-40, strikethrough, "Add" button, non-clickable
+ *   3. Queued    → orange tint border + background
+ *   4. Normal    → hover-brand orange border on hover, cursor-pointer
+ *
+ * The Skip/Add button and duration are always rendered outside the dimmable
+ * left section so they remain at full opacity and are always clickable — even
+ * when the track content is faded to 40%.
+ */
 function TrackRow({
   track,
   onPlay,
   onQueue,
   onPlayNow,
+  onSkipToggle,
   formatTime,
   showPlayCount = false,
   showActions = false,
   isQueued = false,
+  isSkipped = false,
 }: {
   track: { uri: string; name: string; artists: string; explicit: boolean; albumArt: string; duration: number }
   onPlay?: () => void
   onQueue?: () => void
   onPlayNow?: () => void
+  onSkipToggle?: () => void
   formatTime: (ms: number) => string
   showPlayCount?: boolean
   showActions?: boolean
   isQueued?: boolean
+  isSkipped?: boolean
 }) {
-  // Row styling mirrors CommercialCard's three visual states:
-  // 1. Explicit → faded out (opacity-40), non-interactive
-  // 2. Queued → orange tint border + background (applied via inline style below)
-  // 3. Normal → hover-brand class gives an orange border on hover
-  const rowClass = track.explicit
-    ? "opacity-40 cursor-default border-transparent"
+  // Whether the track content should appear dimmed (explicit or skipped)
+  const isDimmed = track.explicit || isSkipped
+
+  // Container: non-interactive for explicit/skipped; orange tint for queued; hover for normal
+  const containerClass = track.explicit || isSkipped
+    ? "cursor-default border-transparent"
     : isQueued
-    ? "" // styled via inline style below (matches announcement queued state)
+    ? "" // styled via inline style below
     : showActions
     ? "border border-zinc-700/60 bg-zinc-800/40 hover-brand"
     : "hover-brand bg-zinc-800/40 border-zinc-700/50 cursor-pointer"
 
-  const rowStyle = isQueued && !track.explicit
+  const rowStyle = isQueued && !isDimmed
     ? { border: "1px solid rgba(255,157,26,0.35)", background: "rgba(255,157,26,0.07)" }
     : undefined
 
+  const titleText = track.explicit
+    ? "Explicit — will be skipped automatically"
+    : isSkipped
+    ? "Skipped — will not play today (press Add to restore)"
+    : showActions ? undefined : "Click to play"
+
   return (
     <div
-      onClick={() => !track.explicit && !showActions && onPlay?.()}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${rowClass}`}
+      onClick={() => !isDimmed && !showActions && onPlay?.()}
+      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${containerClass}`}
       style={rowStyle}
-      title={track.explicit ? "Explicit — will be skipped automatically" : showActions ? undefined : "Click to play"}
+      title={titleText}
     >
-      {/* Small album art */}
-      {track.albumArt ? (
-        <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden">
-          <Image src={track.albumArt} alt={track.name} fill className="object-cover" />
-        </div>
-      ) : (
-        <div className="w-8 h-8 rounded shrink-0 bg-zinc-700" />
-      )}
+      {/* ── Left section: dims when explicit or skipped ── */}
+      <div className={`flex items-center gap-3 flex-1 min-w-0 ${isDimmed ? "opacity-40" : ""}`}>
+        {/* Small album art */}
+        {track.albumArt ? (
+          <div className="relative w-8 h-8 rounded shrink-0 overflow-hidden">
+            <Image src={track.albumArt} alt={track.name} fill className="object-cover" />
+          </div>
+        ) : (
+          <div className="w-8 h-8 rounded shrink-0 bg-zinc-700" />
+        )}
 
-      {/* Track info */}
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm leading-tight truncate ${track.explicit ? "line-through text-zinc-500" : "text-white"}`}>
-          {track.name}
-        </p>
-        <p className="text-xs text-zinc-500 truncate">{track.artists}</p>
+        {/* Track name + artist */}
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm leading-tight truncate ${isDimmed ? "line-through text-zinc-500" : "text-white"}`}>
+            {track.name}
+          </p>
+          <p className="text-xs text-zinc-500 truncate">{track.artists}</p>
+        </div>
+
+        {/* Explicit badge */}
+        {track.explicit && (
+          <span className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded bg-zinc-700 text-zinc-400" title="Explicit — will be skipped">
+            E
+          </span>
+        )}
+
+        {/* Search action buttons — inside dimmable area; not shown for explicit/skipped */}
+        {showActions && !track.explicit && (
+          <div className="flex gap-1.5 shrink-0">
+            <button
+              onClick={(e) => { e.stopPropagation(); onQueue?.() }}
+              disabled={isQueued}
+              className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="Add to queue — plays after current song"
+            >
+              Queue
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onPlayNow?.() }}
+              disabled={isQueued}
+              className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="Play now — fades out current track, plays this song, then resumes playlist"
+            >
+              Play Now
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Explicit badge */}
-      {track.explicit && (
-        <span className="shrink-0 text-[10px] font-bold px-1 py-0.5 rounded bg-zinc-700 text-zinc-400" title="Explicit — will be skipped">
-          E
-        </span>
-      )}
+      {/* ── Right section: always full opacity ── */}
 
-      {/* Action buttons (search results only).
-          Queue: adds to Spotify's queue → plays after current track finishes.
-          Play Now: fade→queue→skip to interrupt current track immediately.
-          Both are disabled when isQueued=true to prevent double-queueing. */}
-      {showActions && !track.explicit && (
-        <div className="flex gap-1.5 shrink-0">
-          <button
-            onClick={(e) => { e.stopPropagation(); onQueue?.() }}
-            disabled={isQueued}
-            className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Add to queue — plays after current song"
-          >
-            Queue
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onPlayNow?.() }}
-            disabled={isQueued}
-            className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Play now — fades out current track, plays this song, then resumes playlist"
-          >
-            Play Now
-          </button>
-        </div>
-      )}
-
-      {/* Play count badge (queue only, not search results) */}
+      {/* Play count badge — queue mode only */}
       {showPlayCount && !track.explicit && <PlayCountBadge uri={track.uri} />}
 
-      {/* Duration */}
+      {/* Skip / Add toggle — queue mode only, not shown for explicit tracks
+          (explicit tracks are already handled by the explicit filter) */}
+      {showPlayCount && !track.explicit && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSkipToggle?.() }}
+          className={`text-xs px-2 py-1 rounded transition-colors shrink-0 ${
+            isSkipped
+              ? "text-zinc-200 bg-zinc-600 hover:bg-zinc-500"
+              : "text-zinc-500 border border-zinc-700 hover:text-white hover:border-zinc-500"
+          }`}
+          title={isSkipped ? "Restore — track will play again" : "Skip — dims track and auto-skips if it comes up today"}
+        >
+          {isSkipped ? "Add" : "Skip"}
+        </button>
+      )}
+
+      {/* Duration — always rightmost */}
       <span className="shrink-0 text-xs text-zinc-500 tabular-nums">{formatTime(track.duration)}</span>
     </div>
   )
