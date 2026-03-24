@@ -23,6 +23,9 @@ import { DriveFile } from "./drive-api"
 
 /** localStorage key for persisting the announcement gain across sessions */
 const LS_GAIN_KEY = "nsbp_announcement_gain"
+/** localStorage keys for the auto-skip-by-play-count feature */
+const LS_AUTO_SKIP_ENABLED_KEY = "nsbp_auto_skip_enabled"
+const LS_AUTO_SKIP_THRESHOLD_KEY = "nsbp_auto_skip_threshold"
 
 /**
  * Reads the saved announcement gain from localStorage.
@@ -37,6 +40,26 @@ function getInitialGain(): number {
     if (!isNaN(n) && n >= 0.5 && n <= 2.0) return n
   }
   return 1.0
+}
+
+/**
+ * Reads whether the auto-skip-by-play-count feature is enabled.
+ * Defaults to false (off) if not previously saved.
+ */
+function getInitialAutoSkipEnabled(): boolean {
+  if (typeof window === "undefined") return false
+  return localStorage.getItem(LS_AUTO_SKIP_ENABLED_KEY) === "true"
+}
+
+/**
+ * Reads the saved auto-skip play count threshold.
+ * Valid values: 1–5 (where 5 means "5 or more times").
+ * Defaults to 3 if not previously saved or invalid.
+ */
+function getInitialAutoSkipThreshold(): number {
+  if (typeof window === "undefined") return 3
+  const saved = parseInt(localStorage.getItem(LS_AUTO_SKIP_THRESHOLD_KEY) ?? "", 10)
+  return [1, 2, 3, 4, 5].includes(saved) ? saved : 3
 }
 
 /** Whether the announcement plays after the current track or interrupts immediately */
@@ -113,6 +136,23 @@ interface CommercialStore {
    */
   announcementGain: number
   setAnnouncementGain: (gain: number) => void
+
+  /**
+   * When true, any track whose today-play-count meets or exceeds autoSkipThreshold
+   * is automatically skipped during playback (via useSkippedFilter).
+   * Also dims those tracks in the Up Next queue in real time.
+   * Persisted in localStorage.
+   */
+  autoSkipEnabled: boolean
+  setAutoSkipEnabled: (enabled: boolean) => void
+
+  /**
+   * The play count threshold for auto-skip. Values 1–5; 5 means "5 or more times".
+   * Only meaningful when autoSkipEnabled is true.
+   * Persisted in localStorage.
+   */
+  autoSkipThreshold: number
+  setAutoSkipThreshold: (threshold: number) => void
 }
 
 /**
@@ -137,6 +177,8 @@ export const useCommercialStore = create<CommercialStore>((set) => ({
   closingTimeQueued: false,
   closingTimeRemoved: false,
   announcementGain: getInitialGain(),
+  autoSkipEnabled: getInitialAutoSkipEnabled(),
+  autoSkipThreshold: getInitialAutoSkipThreshold(),
 
   setFiles: (files) => set({ files }),
   setFolderId: (folderId) => set({ folderId }),
@@ -165,5 +207,13 @@ export const useCommercialStore = create<CommercialStore>((set) => ({
   setAnnouncementGain: (gain) => {
     if (typeof window !== "undefined") localStorage.setItem(LS_GAIN_KEY, String(gain))
     set({ announcementGain: gain })
+  },
+  setAutoSkipEnabled: (enabled) => {
+    if (typeof window !== "undefined") localStorage.setItem(LS_AUTO_SKIP_ENABLED_KEY, String(enabled))
+    set({ autoSkipEnabled: enabled })
+  },
+  setAutoSkipThreshold: (threshold) => {
+    if (typeof window !== "undefined") localStorage.setItem(LS_AUTO_SKIP_THRESHOLD_KEY, String(threshold))
+    set({ autoSkipThreshold: threshold })
   },
 }))

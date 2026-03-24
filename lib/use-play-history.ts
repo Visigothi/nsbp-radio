@@ -32,7 +32,30 @@ export function usePlayHistory() {
   // track twice when playerState fires repeatedly for the same track
   const lastRecordedUri = useRef<string | null>(null)
 
+  /**
+   * Delayed recording timer — prevents inflated play counts from auto-skip cascades.
+   *
+   * Problem: when the skip filter auto-skips overplayed tracks, Spotify briefly
+   * plays each track for 1-2 seconds before skipping to the next. If we record
+   * a play immediately on track change, these brief plays inflate the count,
+   * pushing tracks that were just under the threshold over it. This creates a
+   * runaway cascade where every track appears overplayed.
+   *
+   * Solution: wait 5 seconds before recording a play. If the track changes
+   * within that window (because it was auto-skipped), the timer is cancelled
+   * and no play is recorded. Only tracks that actually play for 5+ seconds
+   * get counted. 5 seconds is long enough to avoid counting auto-skipped
+   * tracks but short enough that a legitimately played track is always recorded.
+   */
+  const recordTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
+    // Clear any pending record timer when track changes or playback stops
+    if (recordTimer.current) {
+      clearTimeout(recordTimer.current)
+      recordTimer.current = null
+    }
+
     // Don't record if there's nothing playing or if playback is paused
     if (!playerState || playerState.paused) return
     if (!playerState.trackUri) return
@@ -40,8 +63,24 @@ export function usePlayHistory() {
     // Don't record if this is the same track we just recorded
     if (playerState.trackUri === lastRecordedUri.current) return
 
-    // New track is playing — record it
-    lastRecordedUri.current = playerState.trackUri
-    recordPlay(playerState.trackUri, playerState.trackName, playerState.artistName)
+    // Capture current values for the closure
+    const uri = playerState.trackUri
+    const name = playerState.trackName
+    const artists = playerState.artistName
+
+    // Delay recording by 5 seconds — if the track is auto-skipped before
+    // then, the timer is cancelled by the cleanup above and no play is logged
+    recordTimer.current = setTimeout(() => {
+      lastRecordedUri.current = uri
+      recordPlay(uri, name, artists)
+    }, 5000)
+
+    // Cleanup on unmount
+    return () => {
+      if (recordTimer.current) {
+        clearTimeout(recordTimer.current)
+        recordTimer.current = null
+      }
+    }
   }, [playerState])
 }

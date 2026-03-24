@@ -23,7 +23,7 @@ import SpotifyAccountSection from "./SpotifyAccountSection"
 import { useCommercialStore } from "@/lib/commercial-store"
 
 /** Current app version — update this whenever a significant change is deployed */
-export const APP_VERSION = "v1.4.1 BETA"
+export const APP_VERSION = "v1.5.0 BETA"
 
 interface SettingsModalProps {
   /** Google account email shown in the Google Account section */
@@ -34,7 +34,11 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ email, signOutAction }: SettingsModalProps) {
   const [open, setOpen] = useState(false)
-  const { announcementGain, setAnnouncementGain } = useCommercialStore()
+  const {
+    announcementGain, setAnnouncementGain,
+    autoSkipEnabled, setAutoSkipEnabled,
+    autoSkipThreshold, setAutoSkipThreshold,
+  } = useCommercialStore()
 
   return (
     <>
@@ -133,6 +137,57 @@ export default function SettingsModal({ email, signOutAction }: SettingsModalPro
                 Boost quiet announcements. 100% = original level, 200% = double amplitude.
               </p>
             </Section>
+
+            {/* ── Playback Rules (HIDDEN — auto-skip needs further testing) ── */}
+            {/*
+              Auto-skip by play count. When enabled, any track whose today-play-count
+              meets or exceeds the threshold is automatically skipped during playback
+              (via useSkippedFilter) and dimmed in the Up Next queue in real time.
+              Threshold 5 means "5 or more times".
+
+              HIDDEN: This feature causes a skip cascade where tracks are rapidly
+              skipped 1-2 seconds in, inflating play counts and making the player
+              unusable. The 5-second recording delay in use-play-history.ts and the
+              2-second cooldown in use-skipped-filter.ts mitigate but don't fully
+              solve the issue. Uncomment this section once the root cause is resolved.
+            */}
+            {/*
+            <Section label="Playback Rules">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="auto-skip-toggle"
+                  checked={autoSkipEnabled}
+                  onChange={(e) => setAutoSkipEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded cursor-pointer"
+                  style={{ accentColor: "var(--brand-orange)" }}
+                />
+                <label
+                  htmlFor="auto-skip-toggle"
+                  className="text-sm text-zinc-300 cursor-pointer select-none"
+                >
+                  Skip tracks played more than
+                </label>
+                <select
+                  value={autoSkipThreshold}
+                  onChange={(e) => setAutoSkipThreshold(parseInt(e.target.value))}
+                  disabled={!autoSkipEnabled}
+                  className="bg-zinc-800 border border-zinc-700 text-white rounded px-2 py-1 text-sm focus:outline-none focus:border-zinc-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ accentColor: "var(--brand-orange)" }}
+                >
+                  <option value={1}>1 Time</option>
+                  <option value={2}>2 Times</option>
+                  <option value={3}>3 Times</option>
+                  <option value={4}>4 Times</option>
+                  <option value={5}>5+ Times</option>
+                </select>
+                <span className="text-sm text-zinc-500">today</span>
+              </div>
+              <p className="text-xs text-zinc-500 mt-1.5">
+                Overplayed tracks will be dimmed in Up Next and auto-skipped during playback.
+              </p>
+            </Section>
+            */}
 
             {/* ── Spotify Account ────────────────────────────────────────── */}
             {/*

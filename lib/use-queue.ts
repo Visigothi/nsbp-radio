@@ -42,6 +42,7 @@ export function useQueue() {
   const tokensRef = useRef(tokens)
   useEffect(() => { tokensRef.current = tokens }, [tokens])
 
+
   /**
    * Fetches the current Spotify queue and updates the store.
    * Stable reference via useCallback — safe to pass to setTimeout callers.
@@ -57,6 +58,7 @@ export function useQueue() {
   const fetchQueue = useCallback(async () => {
     const t = tokensRef.current
     if (!t) return
+
     try {
       const res = await fetch("https://api.spotify.com/v1/me/player/queue", {
         headers: { Authorization: `Bearer ${t.accessToken}` },

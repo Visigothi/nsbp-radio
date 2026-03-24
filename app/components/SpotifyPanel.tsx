@@ -56,6 +56,8 @@ export default function SpotifyPanel() {
     clearQueue,
     setClosingTimeQueued,
     setClosingTimeRemoved,
+    autoSkipEnabled,
+    autoSkipThreshold,
   } = useCommercialStore()
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([])
   const [selectedPlaylist, setSelectedPlaylist] = useState<SpotifyPlaylist | null>(null)
@@ -684,6 +686,11 @@ export default function SpotifyPanel() {
                     formatTime={formatTime}
                     showPlayCount
                     isSkipped={skippedUris.has(track.uri)}
+                    isAutoSkipped={
+                      !skippedUris.has(track.uri) &&
+                      autoSkipEnabled &&
+                      getPlayCounts(track.uri).today >= autoSkipThreshold
+                    }
                   />
                 ))}
               </div>
@@ -873,6 +880,7 @@ function TrackRow({
   showActions = false,
   isQueued = false,
   isSkipped = false,
+  isAutoSkipped = false,
 }: {
   track: { uri: string; name: string; artists: string; explicit: boolean; albumArt: string; duration: number }
   onPlay?: () => void
@@ -884,12 +892,14 @@ function TrackRow({
   showActions?: boolean
   isQueued?: boolean
   isSkipped?: boolean
+  /** True when auto-skip-by-play-count is active and this track exceeds the threshold */
+  isAutoSkipped?: boolean
 }) {
-  // Whether the track content should appear dimmed (explicit or skipped)
-  const isDimmed = track.explicit || isSkipped
+  // Whether the track content should appear dimmed
+  const isDimmed = track.explicit || isSkipped || isAutoSkipped
 
-  // Container: non-interactive for explicit/skipped; orange tint for queued; hover for normal
-  const containerClass = track.explicit || isSkipped
+  // Container: non-interactive for explicit/skipped/auto-skipped; orange tint for queued; hover for normal
+  const containerClass = track.explicit || isSkipped || isAutoSkipped
     ? "cursor-default border-transparent"
     : isQueued
     ? "" // styled via inline style below
@@ -897,7 +907,7 @@ function TrackRow({
     ? "border border-zinc-700/60 bg-zinc-800/40 hover-brand"
     : "hover-brand bg-zinc-800/40 border-zinc-700/50 cursor-pointer"
 
-  const rowStyle = isQueued && !isDimmed
+  const rowStyle = isQueued && !isDimmed && !isAutoSkipped
     ? { border: "1px solid rgba(255,157,26,0.35)", background: "rgba(255,157,26,0.07)" }
     : undefined
 
@@ -905,11 +915,13 @@ function TrackRow({
     ? "Explicit — will be skipped automatically"
     : isSkipped
     ? "Skipped — will not play today (press Add to restore)"
+    : isAutoSkipped
+    ? "Played too many times today — will be auto-skipped (adjust threshold in Settings)"
     : showActions ? undefined : "Click to play"
 
   return (
     <div
-      onClick={() => !isDimmed && !showActions && onPlay?.()}
+      onClick={() => !isDimmed && !isAutoSkipped && !showActions && onPlay?.()}
       className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${containerClass}`}
       style={rowStyle}
       title={titleText}
@@ -968,16 +980,12 @@ function TrackRow({
       {/* Play count badge — queue mode only */}
       {showPlayCount && !track.explicit && <PlayCountBadge uri={track.uri} />}
 
-      {/* Skip / Add toggle — queue mode only, not shown for explicit tracks
-          (explicit tracks are already handled by the explicit filter) */}
-      {showPlayCount && !track.explicit && (
+      {/* Skip / Add toggle — queue mode only; not shown for explicit tracks or
+          auto-skipped-by-count tracks (those are controlled via Settings threshold) */}
+      {showPlayCount && !track.explicit && !isAutoSkipped && (
         <button
           onClick={(e) => { e.stopPropagation(); onSkipToggle?.() }}
-          className={`text-xs px-2 py-1 rounded transition-colors shrink-0 ${
-            isSkipped
-              ? "text-zinc-200 bg-zinc-600 hover:bg-zinc-500"
-              : "text-zinc-500 border border-zinc-700 hover:text-white hover:border-zinc-500"
-          }`}
+          className={`text-xs px-2 py-1 rounded transition-colors shrink-0 text-zinc-500 border border-zinc-700 hover:text-white hover:border-zinc-500`}
           title={isSkipped ? "Restore — track will play again" : "Skip — dims track and auto-skips if it comes up today"}
         >
           {isSkipped ? "Add" : "Skip"}
