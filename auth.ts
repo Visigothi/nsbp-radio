@@ -94,11 +94,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
      * "mike@westcoastbikeparks.ca" in the env var.
      */
     async signIn({ user }) {
+      const email = (user.email ?? "").toLowerCase()
+
+      // Always allow the admin email through so they can reach /api/admin/verify
+      // even if they are not in the regular ALLOWED_EMAILS list
+      const adminEmail = (process.env.ADMIN_EMAIL ?? "").trim().toLowerCase()
+      if (adminEmail && email === adminEmail) return true
+
       const allowedEmails = (process.env.ALLOWED_EMAILS ?? "")
         .split(",")
         .map((e) => e.trim().toLowerCase())
         .filter(Boolean)
-      return allowedEmails.includes((user.email ?? "").toLowerCase())
+      return allowedEmails.includes(email)
     },
 
     /**

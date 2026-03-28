@@ -25,6 +25,11 @@ import { useEffect, useRef } from "react"
 import { useSpotifyStore } from "./spotify-store"
 import { recordPlay } from "./play-history"
 
+/** Strips the "spotify:track:" prefix to get the bare Spotify track ID. */
+function extractTrackId(uri: string): string {
+  return uri.replace("spotify:track:", "")
+}
+
 export function usePlayHistory() {
   const playerState = useSpotifyStore((s) => s.playerState)
 
@@ -73,6 +78,17 @@ export function usePlayHistory() {
     recordTimer.current = setTimeout(() => {
       lastRecordedUri.current = uri
       recordPlay(uri, name, artists)
+
+      // Also persist to Supabase for admin analytics (fire-and-forget)
+      fetch("/api/track-play", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trackId: extractTrackId(uri),
+          trackName: name,
+          artistName: artists,
+        }),
+      }).catch((err) => console.error("[track-play] Failed to record to Supabase:", err))
     }, 5000)
 
     // Cleanup on unmount

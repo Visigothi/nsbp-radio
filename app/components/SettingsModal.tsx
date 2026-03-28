@@ -23,7 +23,7 @@ import SpotifyAccountSection from "./SpotifyAccountSection"
 import { useCommercialStore } from "@/lib/commercial-store"
 
 /** Current app version — update this whenever a significant change is deployed */
-export const APP_VERSION = "v1.5.0 BETA"
+export const APP_VERSION = "v1.6.0 BETA"
 
 interface SettingsModalProps {
   /** Google account email shown in the Google Account section */
@@ -196,6 +196,27 @@ export default function SettingsModal({ email, signOutAction }: SettingsModalPro
               via the Spotify auth flow (PKCE OAuth).
             */}
             <SpotifyAccountSection />
+
+            {/* ── Admin Panel ────────────────────────────────────────────── */}
+            {/*
+              Opens the admin dashboard in a new tab. The admin panel uses its
+              own independent session (admin_session JWT cookie) separate from
+              the staff NextAuth session — no cross-contamination between the
+              two auth layers.
+            */}
+            <Section label="Admin">
+              <a
+                href="/admin"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 hover:border-orange-500/50 transition-colors"
+              >
+                <ShieldIcon />
+                Open Admin Panel
+                <ExternalLinkIcon />
+              </a>
+              <p className="text-xs text-zinc-600 mt-1.5">Opens in a new tab · Admin login required</p>
+            </Section>
           </div>
         </div>,
         document.body
@@ -230,6 +251,22 @@ function CloseIcon() {
   return (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
       <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+    </svg>
+  )
+}
+
+function ShieldIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2L4 6v6c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V6l-8-4z" />
+    </svg>
+  )
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
     </svg>
   )
 }

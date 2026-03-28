@@ -1,51 +1,91 @@
 /**
- * proxy.ts — NextAuth v5 middleware for route protection
+ * proxy.ts — Route protection middleware
  *
- * Wraps the NextAuth `auth()` helper as Edge Middleware to enforce
- * authentication on every route except those excluded by the matcher below.
+ * Handles two separate authentication layers:
  *
- * Behavior:
- *   - Unauthenticated users are redirected to /login.
- *   - Already-authenticated users who visit /login are redirected to /.
- *   - All other requests pass through unchanged.
+ * 1. Admin routes (/admin, /admin/*):
+ *    Checked against a signed `admin_session` JWT cookie minted by
+ *    /api/admin/verify after Google OAuth. Expired or missing cookie
+ *    redirects to /admin/login. The NextAuth session is NOT required
+ *    for admin routes — only the admin_session cookie matters.
+ *
+ * 2. Regular app routes (everything else):
+ *    Checked for the presence of the NextAuth session cookie
+ *    (`authjs.session-token` on HTTP, `__Secure-authjs.session-token`
+ *    on HTTPS). Unauthenticated users are sent to /login; authenticated
+ *    users visiting /login are redirected to /.
+ *
+ * Excluded from middleware entirely (handled by their own auth logic):
+ *   - api/auth/*          NextAuth OAuth endpoints
+ *   - api/admin/verify    Post-OAuth admin verification (needs open access)
+ *   - admin/login         Admin login page
+ *   - spotify-callback    Spotify OAuth callback (runs on 127.0.0.1)
+ *   - _next/*             Next.js static assets
+ *   - favicon.ico
  */
 
-import { auth } from "@/auth"
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { jwtVerify } from "jose"
 
-export default auth((req) => {
-  const isLoggedIn = !!req.auth
-  const isLoginPage = req.nextUrl.pathname === "/login"
+export default async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
 
-  // Not logged in and trying to access a protected page → send to login
-  if (!isLoggedIn && !isLoginPage) {
+  // ── Admin dashboard routes ────────────────────────────────────────────────
+  // /admin/login and /api/admin/verify are excluded by the matcher below,
+  // so any /admin path reaching here requires a valid admin session cookie.
+  if (pathname.startsWith("/admin")) {
+    const adminToken = req.cookies.get("admin_session")?.value
+
+    if (!adminToken) {
+      return NextResponse.redirect(new URL("/admin/login", req.url))
+    }
+
+    try {
+      const secret = new TextEncoder().encode(process.env.AUTH_SECRET!)
+      await jwtVerify(adminToken, secret)
+      return NextResponse.next()
+    } catch {
+      // Expired or tampered token — clear the cookie and send to login
+      const res = NextResponse.redirect(new URL("/admin/login", req.url))
+      res.cookies.delete("admin_session")
+      return res
+    }
+  }
+
+  // ── Regular app routes ────────────────────────────────────────────────────
+  const isLoginPage = pathname === "/login"
+
+  // NextAuth v5 uses "authjs.session-token" (HTTP) or
+  // "__Secure-authjs.session-token" (HTTPS) for the session cookie
+  const hasSession =
+    req.cookies.has("authjs.session-token") ||
+    req.cookies.has("__Secure-authjs.session-token")
+
+  if (!hasSession && !isLoginPage) {
     return NextResponse.redirect(new URL("/login", req.url))
   }
 
-  // Already logged in but visiting /login → send to app root
-  if (isLoggedIn && isLoginPage) {
+  if (hasSession && isLoginPage) {
     return NextResponse.redirect(new URL("/", req.url))
   }
 
   return NextResponse.next()
-})
+}
 
 /**
- * Middleware matcher — defines which routes this middleware runs on.
+ * Middleware matcher — routes this middleware runs on.
  *
- * The negative lookahead excludes:
- *   - api/auth/*       — NextAuth API routes (must be publicly accessible
- *                        for the OAuth flow to complete)
- *   - spotify-callback — The Spotify OAuth redirect target. This route is
- *                        loaded on the 127.0.0.1 origin where the NextAuth
- *                        session cookie (bound to localhost) is not present.
- *                        Without this exclusion, the middleware would redirect
- *                        the callback page to /login, breaking the Spotify
- *                        OAuth flow entirely.
- *   - _next/static/*   — Next.js static assets (JS bundles, CSS)
- *   - _next/image/*    — Next.js optimised image endpoint
- *   - favicon.ico      — Browser favicon request
+ * Excluded:
+ *   api/auth/*         NextAuth OAuth endpoints must be public
+ *   api/admin/verify   Admin OAuth callback; verifies session inside the handler
+ *   admin/login        Admin login page; no cookie required to render
+ *   spotify-callback   Loads on 127.0.0.1 where the session cookie is absent
+ *   _next/static/*     Next.js JS/CSS bundles
+ *   _next/image/*      Next.js image optimisation endpoint
+ *   favicon.ico        Browser favicon
  */
 export const config = {
-  matcher: ["/((?!api/auth|spotify-callback|_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/((?!api/auth|api/admin/verify|admin/login|spotify-callback|_next/static|_next/image|favicon.ico).*)",
+  ],
 }

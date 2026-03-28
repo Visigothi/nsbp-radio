@@ -108,3 +108,51 @@ Before running `vercel --prod`:
 | `NEXT_PUBLIC_SPOTIFY_REDIRECT_URI` | `https://nsbp-radio.vercel.app/spotify-callback` |
 | `NEXT_PUBLIC_GOOGLE_API_KEY` | (public) |
 | `NEXT_PUBLIC_DEFAULT_DRIVE_FOLDER_ID` | (public) |
+| `SUPABASE_URL` | `https://frbqjdmpdashtgropoip.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | (secret) |
+| `ADMIN_EMAIL` | `mike@westcoastbikeparks.ca` (park production) |
+| `INSTANCE_ID` | `nsbp` (park production) |
+
+---
+
+# Admin Layer
+
+The app has a separate admin panel at `/admin` protected by its own session cookie (independent of the staff NextAuth session).
+
+## Admin Auth Flow
+
+1. Admin visits `/admin/login` → clicks Sign in with Google
+2. NextAuth completes Google OAuth (admin email is whitelisted via `ADMIN_EMAIL` env var even if not in `ALLOWED_EMAILS`)
+3. `/api/admin/verify` checks email against `ADMIN_EMAIL`, mints a signed 1-hour `admin_session` JWT cookie, redirects to `/admin`
+4. Middleware (`proxy.ts`) verifies the cookie on every `/admin/*` request
+
+## Analytics
+
+Track play events are written to Supabase (`track_plays` table) when a track has been playing for 5+ seconds (same threshold as the existing localStorage play history). The admin dashboard shows today's plays in Vancouver time, sorted chronologically.
+
+## Multi-Instance Isolation (Temporary)
+
+Currently all deployments share one Supabase project. Two columns tag every row to prevent analytics from mixing across deployments:
+
+| Column | Values | Purpose |
+|---|---|---|
+| `environment` | `dev` / `prod` | Separates local dev plays from production plays |
+| `instance_id` | e.g. `nsbp`, `personal-dev` | Separates different park deployments |
+
+**This is a temporary approach.** See the backlog item below for the production-ready solution.
+
+---
+
+# Admin Backlog
+
+Features planned but not yet built, in rough priority order.
+
+| # | Feature | Notes |
+|---|---|---|
+| 1 | **Multi-park / multi-tenant architecture** | Current `environment` + `instance_id` column approach is a temporary workaround. Production solution: one Supabase project per park (Option A). Each Vercel deployment gets its own `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Remove `environment` and `instance_id` columns from `track_plays` at that time. |
+| 2 | **User access control** | Manage which Google accounts can log into a given instance of the radio app |
+| 3 | **Banned tracks** | Prevent specific Spotify tracks from playing |
+| 4 | **Scheduled announcement injection** | Queue Drive MP3s to play automatically at set times |
+| 5 | **Private announcements** | Announcements not visible to regular staff |
+| 6 | **Remote control** | Control playback (play, pause, skip, volume) from the admin panel |
+| 7 | **Historical analytics** | View play history beyond today (7-day, monthly views) |
