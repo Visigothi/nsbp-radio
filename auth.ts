@@ -96,11 +96,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user }) {
       const email = (user.email ?? "").toLowerCase()
 
-      // Always allow the admin email through so they can reach /api/admin/verify
-      // even if they are not in the regular ALLOWED_EMAILS list
+      // Always allow the ADMIN_EMAIL env var through (owner/fallback account)
       const adminEmail = (process.env.ADMIN_EMAIL ?? "").trim().toLowerCase()
       if (adminEmail && email === adminEmail) return true
 
+      // Also allow any email that has been invited via the admin panel
+      // (stored in the admin_users Supabase table)
+      const { supabase } = await import("@/lib/supabase")
+      const { data: adminUser } = await supabase
+        .from("admin_users")
+        .select("email")
+        .eq("email", email)
+        .maybeSingle()
+      if (adminUser) return true
+
+      // Regular staff allowlist from env var
       const allowedEmails = (process.env.ALLOWED_EMAILS ?? "")
         .split(",")
         .map((e) => e.trim().toLowerCase())

@@ -2,15 +2,17 @@
  * GET /api/admin/verify
  *
  * Called by NextAuth as the OAuth callbackUrl after a Google sign-in initiated
- * from the admin login page. Verifies that the authenticated email matches
- * ADMIN_EMAIL, then mints a signed 1-hour admin session JWT and sets it as an
- * httpOnly cookie before redirecting to /admin.
+ * from the admin login page. Checks that the authenticated email is authorised
+ * as an admin — either via the ADMIN_EMAIL env var (owner/fallback) or the
+ * admin_users Supabase table (invited admins). Mints a signed 1-hour
+ * admin_session JWT cookie and redirects to /admin.
  *
  * This route is excluded from the NextAuth middleware matcher so it can be
  * reached after OAuth regardless of the user's ALLOWED_EMAILS status.
  */
 
 import { auth } from "@/auth"
+import { supabase } from "@/lib/supabase"
 import { SignJWT } from "jose"
 import { NextResponse } from "next/server"
 
@@ -22,8 +24,20 @@ export async function GET() {
     return NextResponse.redirect(new URL("/admin/login?error=no_session", origin))
   }
 
+  const email = session.user.email.toLowerCase()
+
+  // Check 1: owner account via env var
   const adminEmail = (process.env.ADMIN_EMAIL ?? "").trim().toLowerCase()
-  if (!adminEmail || session.user.email.toLowerCase() !== adminEmail) {
+  const isOwner = adminEmail && email === adminEmail
+
+  // Check 2: invited admin via Supabase table
+  const { data: invitedAdmin } = await supabase
+    .from("admin_users")
+    .select("email")
+    .eq("email", email)
+    .maybeSingle()
+
+  if (!isOwner && !invitedAdmin) {
     return NextResponse.redirect(new URL("/admin/login?error=unauthorized", origin))
   }
 

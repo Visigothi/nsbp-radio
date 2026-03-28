@@ -86,6 +86,13 @@ export default async function middleware(req: NextRequest) {
  */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/admin/verify|admin/login|spotify-callback|_next/static|_next/image|favicon.ico).*)",
+    // Excluded routes — handled by their own auth logic or no auth required:
+    //   api/auth/*        NextAuth OAuth endpoints (must be public)
+    //   api/admin/*       Admin API routes; each verifies admin_session JWT internally
+    //   admin/login       Admin login page; no cookie required to render
+    //   spotify-callback  Spotify OAuth callback; runs on 127.0.0.1 where session cookie is absent
+    //   _next/*           Next.js static assets and image optimisation
+    //   favicon.ico       Browser favicon
+    "/((?!api/auth|api/admin|admin/login|spotify-callback|_next/static|_next/image|favicon.ico).*)",
   ],
 }

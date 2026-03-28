@@ -209,6 +209,21 @@ export function useCommercialEngine() {
         }
         audio.addEventListener("timeupdate", onTimeUpdate)
 
+        // Record this announcement play to Supabase for admin analytics.
+        // Fire-and-forget — we don't await so a network hiccup never blocks playback.
+        // playType "announcement" lets the admin dashboard distinguish Drive files
+        // from Spotify tracks in the same track_plays table.
+        fetch("/api/track-play", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trackId: file.id,
+            trackName: file.displayName,
+            artistName: "",
+            playType: "announcement",
+          }),
+        }).catch((err) => console.error("[track-play] Failed to record announcement:", err))
+
         // Wait for the announcement to finish (or throw on error)
         await new Promise<void>((resolve, reject) => {
           audio.addEventListener("ended", () => resolve())

@@ -4,9 +4,13 @@
  * Server component. The admin_session cookie is verified by middleware before
  * this page renders, so authentication is already guaranteed at this point.
  *
- * Analytics shown: all tracks that received a play event today (Vancouver time),
- * sorted chronologically by their first play of the day. Each row shows:
- *   Track Name · Artist · Play Count · Last Played (Vancouver local time)
+ * Sections:
+ *   1. Track Analytics — all play events today (Vancouver time), sorted
+ *      chronologically. Spotify tracks shown in white; Drive announcements
+ *      highlighted in orange with an "Announcement" badge.
+ *   2. Admin Users — list of accounts with admin access, plus an invite form
+ *      to add new emails. Invites are stored in the admin_users Supabase table
+ *      and take effect immediately on the invitee's next login attempt.
  */
 
 import { cookies } from "next/headers"
@@ -65,15 +69,31 @@ function formatVancouverDate(iso: string): string {
   })
 }
 
+/** Formats a UTC ISO string as a short date (e.g. "Mar 28"). */
+function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-CA", {
+    timeZone: "America/Vancouver",
+    month: "short",
+    day: "numeric",
+  })
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface TrackRow {
+interface PlayRow {
   trackId: string
   trackName: string
   artistName: string
+  playType: "track" | "announcement"
   playCount: number
   lastPlayed: string   // UTC ISO
   firstPlayed: string  // UTC ISO — used for chronological sort only
+}
+
+interface AdminUser {
+  email: string
+  invited_by: string
+  created_at: string
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -91,33 +111,44 @@ export default async function AdminPage() {
   const environment = process.env.NODE_ENV === "production" ? "prod" : "dev"
   const instanceId = process.env.INSTANCE_ID ?? "default"
 
-  // Fetch all play events for today (Vancouver time)
+  // Fetch all play events for today (Vancouver time), including play_type
   const { gte, lte } = getVancouverTodayRange()
-  const { data: plays, error } = await supabase
+  const { data: plays, error: playsError } = await supabase
     .from("track_plays")
-    .select("track_id, track_name, artist_name, played_at")
+    .select("track_id, track_name, artist_name, play_type, played_at")
     .eq("environment", environment)
     .eq("instance_id", instanceId)
     .gte("played_at", gte)
     .lte("played_at", lte)
     .order("played_at", { ascending: true })
 
-  if (error) {
-    console.error("[admin] Failed to fetch track plays:", error)
+  if (playsError) {
+    console.error("[admin] Failed to fetch track plays:", playsError)
   }
 
-  // Aggregate: one entry per track_id, counting plays and tracking timestamps
-  const trackMap = new Map<string, TrackRow>()
+  // Fetch all admin users for the invite management section
+  const { data: adminUsers, error: adminUsersError } = await supabase
+    .from("admin_users")
+    .select("email, invited_by, created_at")
+    .order("created_at", { ascending: true })
+
+  if (adminUsersError) {
+    console.error("[admin] Failed to fetch admin users:", adminUsersError)
+  }
+
+  // Aggregate plays: one entry per track_id, counting plays and tracking timestamps
+  const playMap = new Map<string, PlayRow>()
   for (const play of plays ?? []) {
-    const existing = trackMap.get(play.track_id)
+    const existing = playMap.get(play.track_id)
     if (existing) {
       existing.playCount++
       if (play.played_at > existing.lastPlayed) existing.lastPlayed = play.played_at
     } else {
-      trackMap.set(play.track_id, {
+      playMap.set(play.track_id, {
         trackId: play.track_id,
         trackName: play.track_name,
-        artistName: play.artist_name,
+        artistName: play.artist_name ?? "",
+        playType: play.play_type === "announcement" ? "announcement" : "track",
         playCount: 1,
         lastPlayed: play.played_at,
         firstPlayed: play.played_at,
@@ -125,13 +156,18 @@ export default async function AdminPage() {
     }
   }
 
-  // Chronological order (first play of each unique track)
-  const tracks = Array.from(trackMap.values()).sort((a, b) =>
+  // Sort chronologically by first play of each unique item
+  const allRows = Array.from(playMap.values()).sort((a, b) =>
     a.firstPlayed.localeCompare(b.firstPlayed)
   )
 
   const totalPlays = plays?.length ?? 0
+  const trackCount = allRows.filter((r) => r.playType === "track").length
+  const announcementCount = allRows.filter((r) => r.playType === "announcement").length
   const todayLabel = formatVancouverDate(new Date().toISOString())
+
+  // The owner email (always has access, stored in env var, not necessarily in admin_users table)
+  const ownerEmail = (process.env.ADMIN_EMAIL ?? "").trim().toLowerCase()
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -165,96 +201,238 @@ export default async function AdminPage() {
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-5xl mx-auto px-6 py-8 space-y-10">
 
-        {/* Page title + refresh */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-white">Track Analytics</h2>
-            <p className="text-zinc-400 text-sm mt-0.5">{todayLabel}</p>
+        {/* ── Track Analytics ─────────────────────────────────────────────── */}
+        <section className="space-y-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Track Analytics</h2>
+              <p className="text-zinc-400 text-sm mt-0.5">{todayLabel}</p>
+            </div>
+            <form action="">
+              <button
+                type="submit"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+              >
+                <RefreshIcon />
+                Refresh
+              </button>
+            </form>
           </div>
-          <form action="">
-            <button
-              type="submit"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-700 text-sm text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
-            >
-              <RefreshIcon />
-              Refresh
-            </button>
-          </form>
-        </div>
 
-        {/* Summary cards */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <StatCard label="Tracks Played" value={tracks.length.toString()} />
-          <StatCard label="Total Plays" value={totalPlays.toString()} />
-          <StatCard
-            label="Most Played"
-            value={
-              tracks.length > 0
-                ? `${Math.max(...tracks.map((t) => t.playCount))}×`
-                : "—"
-            }
-          />
-        </div>
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <StatCard label="Tracks" value={trackCount.toString()} />
+            <StatCard label="Announcements" value={announcementCount.toString()} orange />
+            <StatCard label="Total Plays" value={totalPlays.toString()} />
+            <StatCard
+              label="Most Played"
+              value={
+                allRows.length > 0
+                  ? `${Math.max(...allRows.map((r) => r.playCount))}×`
+                  : "—"
+              }
+            />
+          </div>
 
-        {/* Track table */}
-        {tracks.length === 0 ? (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-6 py-12 text-center">
-            <p className="text-zinc-500 text-sm">No tracks played yet today.</p>
-            <p className="text-zinc-600 text-xs mt-1">
-              Play events appear here after a track has been playing for 5 seconds.
+          {/* Play table — tracks (white) and announcements (orange) interleaved */}
+          {allRows.length === 0 ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-6 py-12 text-center">
+              <p className="text-zinc-500 text-sm">No plays recorded yet today.</p>
+              <p className="text-zinc-600 text-xs mt-1">
+                Tracks appear after 5 seconds of playback. Announcements appear when they start.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-zinc-800 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-zinc-900 border-b border-zinc-800">
+                    <th className="text-left px-4 py-3 text-zinc-400 font-medium w-8">#</th>
+                    <th className="text-left px-4 py-3 text-zinc-400 font-medium">Name</th>
+                    <th className="text-left px-4 py-3 text-zinc-400 font-medium hidden sm:table-cell">Artist</th>
+                    <th className="text-center px-4 py-3 text-zinc-400 font-medium w-24">Plays</th>
+                    <th className="text-right px-4 py-3 text-zinc-400 font-medium w-32 hidden sm:table-cell">Last Played</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/60">
+                  {allRows.map((row, i) => {
+                    const isAnnouncement = row.playType === "announcement"
+                    return (
+                      <tr
+                        key={row.trackId}
+                        className={`transition-colors ${
+                          isAnnouncement
+                            ? "bg-orange-950/20 hover:bg-orange-950/30"
+                            : "bg-zinc-950 hover:bg-zinc-900/60"
+                        }`}
+                      >
+                        <td className="px-4 py-3 text-zinc-600 tabular-nums">{i + 1}</td>
+                        <td className="px-4 py-3">
+                          <div className={`font-medium truncate max-w-[200px] sm:max-w-none flex items-center gap-2 ${
+                            isAnnouncement ? "text-orange-300" : "text-zinc-100"
+                          }`}>
+                            {row.trackName}
+                            {/* Announcement badge — visible on desktop, inline on mobile */}
+                            {isAnnouncement && (
+                              <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-500/20 text-orange-400 border border-orange-500/25 tracking-wide uppercase shrink-0">
+                                Announcement
+                              </span>
+                            )}
+                          </div>
+                          {/* On mobile: show badge below name */}
+                          {isAnnouncement && (
+                            <span className="sm:hidden inline-flex items-center mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-500/20 text-orange-400 border border-orange-500/25 tracking-wide uppercase">
+                              Announcement
+                            </span>
+                          )}
+                          {/* Artist shown inline on mobile for tracks */}
+                          {!isAnnouncement && (
+                            <div className="text-zinc-500 text-xs mt-0.5 sm:hidden truncate">
+                              {row.artistName}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-zinc-400 hidden sm:table-cell truncate max-w-[180px]">
+                          {isAnnouncement ? (
+                            <span className="text-zinc-600 italic">—</span>
+                          ) : (
+                            row.artistName
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`inline-flex items-center justify-center w-8 h-6 rounded-full text-xs font-semibold tabular-nums ${
+                            isAnnouncement
+                              ? "bg-orange-500/20 text-orange-400"
+                              : row.playCount >= 3
+                                ? "bg-orange-500/20 text-orange-400"
+                                : "bg-zinc-800 text-zinc-300"
+                          }`}>
+                            {row.playCount}
+                          </span>
+                        </td>
+                        <td className={`px-4 py-3 text-right text-xs tabular-nums hidden sm:table-cell ${
+                          isAnnouncement ? "text-orange-400/60" : "text-zinc-500"
+                        }`}>
+                          {formatVancouverTime(row.lastPlayed)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {/* ── Admin Users ─────────────────────────────────────────────────── */}
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold text-white">Admin Access</h2>
+            <p className="text-zinc-400 text-sm mt-0.5">
+              Google accounts with access to this admin panel.
             </p>
           </div>
-        ) : (
+
+          {/* Current admins list */}
           <div className="rounded-xl border border-zinc-800 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-zinc-900 border-b border-zinc-800">
-                  <th className="text-left px-4 py-3 text-zinc-400 font-medium w-8">#</th>
-                  <th className="text-left px-4 py-3 text-zinc-400 font-medium">Track</th>
-                  <th className="text-left px-4 py-3 text-zinc-400 font-medium hidden sm:table-cell">Artist</th>
-                  <th className="text-center px-4 py-3 text-zinc-400 font-medium w-24">Plays</th>
-                  <th className="text-right px-4 py-3 text-zinc-400 font-medium w-32 hidden sm:table-cell">Last Played</th>
+                  <th className="text-left px-4 py-3 text-zinc-400 font-medium">Email</th>
+                  <th className="text-left px-4 py-3 text-zinc-400 font-medium hidden sm:table-cell">Invited By</th>
+                  <th className="text-right px-4 py-3 text-zinc-400 font-medium w-28 hidden sm:table-cell">Added</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
-                {tracks.map((track, i) => (
-                  <tr
-                    key={track.trackId}
-                    className="bg-zinc-950 hover:bg-zinc-900/60 transition-colors"
-                  >
-                    <td className="px-4 py-3 text-zinc-600 tabular-nums">{i + 1}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-zinc-100 truncate max-w-[200px] sm:max-w-none">
-                        {track.trackName}
-                      </div>
-                      {/* Artist shown inline on mobile only */}
-                      <div className="text-zinc-500 text-xs mt-0.5 sm:hidden truncate">
-                        {track.artistName}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-zinc-400 hidden sm:table-cell truncate max-w-[180px]">
-                      {track.artistName}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`inline-flex items-center justify-center w-8 h-6 rounded-full text-xs font-semibold tabular-nums ${
-                        track.playCount >= 3
-                          ? "bg-orange-500/20 text-orange-400"
-                          : "bg-zinc-800 text-zinc-300"
-                      }`}>
-                        {track.playCount}
+                {/* Owner row — always shown, sourced from env var */}
+                <tr className="bg-zinc-950">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-zinc-200">{ownerEmail}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-zinc-700 text-zinc-400 tracking-wide uppercase">
+                        Owner
                       </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-zinc-600 hidden sm:table-cell italic">—</td>
+                  <td className="px-4 py-3 text-right text-zinc-600 text-xs hidden sm:table-cell">—</td>
+                </tr>
+                {/* Invited admin rows from the database */}
+                {(adminUsers ?? []).map((u: AdminUser) => (
+                  <tr key={u.email} className="bg-zinc-950 hover:bg-zinc-900/60 transition-colors">
+                    <td className="px-4 py-3 text-zinc-200">{u.email}</td>
+                    <td className="px-4 py-3 text-zinc-500 hidden sm:table-cell truncate max-w-[200px]">
+                      {u.invited_by}
                     </td>
-                    <td className="px-4 py-3 text-right text-zinc-500 text-xs tabular-nums hidden sm:table-cell">
-                      {formatVancouverTime(track.lastPlayed)}
+                    <td className="px-4 py-3 text-right text-zinc-500 text-xs hidden sm:table-cell">
+                      {formatShortDate(u.created_at)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
+
+          {/* Invite form — server action inserts directly into admin_users */}
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 px-5 py-5">
+            <p className="text-sm font-medium text-zinc-200 mb-1">Invite an admin</p>
+            <p className="text-xs text-zinc-500 mb-4">
+              Enter a Google account email. The invitee can log in immediately at{" "}
+              <span className="text-zinc-400 font-mono">/admin/login</span> — no action required on their end.
+            </p>
+            <form
+              action={async (formData: FormData) => {
+                "use server"
+                const email = ((formData.get("email") as string) ?? "").trim().toLowerCase()
+                if (!email) return
+
+                // Read the caller's email from their admin_session cookie
+                const { cookies: getCookies } = await import("next/headers")
+                const { jwtVerify } = await import("jose")
+                const jar = await getCookies()
+                const token = jar.get("admin_session")?.value
+                let callerEmail = "unknown"
+                if (token) {
+                  try {
+                    const secret = new TextEncoder().encode(process.env.AUTH_SECRET!)
+                    const { payload } = await jwtVerify(token, secret)
+                    callerEmail = (payload.email as string) ?? "unknown"
+                  } catch { /* token expired mid-session — callerEmail stays "unknown" */ }
+                }
+
+                const { supabase: sb } = await import("@/lib/supabase")
+                const { error } = await sb.from("admin_users").insert({
+                  email,
+                  invited_by: callerEmail,
+                })
+
+                if (error && error.code !== "23505") {
+                  console.error("[admin/invite] Failed to insert admin user:", error)
+                }
+
+                const { revalidatePath } = await import("next/cache")
+                revalidatePath("/admin")
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="email"
+                name="email"
+                required
+                placeholder="email@example.com"
+                className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 min-w-0"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-lg bg-orange-500/20 border border-orange-500/30 text-orange-400 text-sm font-medium hover:bg-orange-500/30 hover:border-orange-500/50 transition-colors shrink-0"
+              >
+                Invite
+              </button>
+            </form>
+          </div>
+        </section>
 
       </div>
     </main>
@@ -263,11 +441,23 @@ export default async function AdminPage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value, orange }: { label: string; value: string; orange?: boolean }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-4">
-      <p className="text-zinc-500 text-xs uppercase tracking-wider font-medium">{label}</p>
-      <p className="text-2xl font-bold text-white mt-1 tabular-nums">{value}</p>
+    <div className={`rounded-xl border px-4 py-4 ${
+      orange
+        ? "border-orange-500/25 bg-orange-950/20"
+        : "border-zinc-800 bg-zinc-900/50"
+    }`}>
+      <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${
+        orange ? "text-orange-500/70" : "text-zinc-500"
+      }`}>
+        {label}
+      </p>
+      <p className={`text-2xl font-bold tabular-nums ${
+        orange ? "text-orange-300" : "text-white"
+      }`}>
+        {value}
+      </p>
     </div>
   )
 }
