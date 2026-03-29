@@ -122,13 +122,63 @@ The app has a separate admin panel at `/admin` protected by its own session cook
 ## Admin Auth Flow
 
 1. Admin visits `/admin/login` → clicks Sign in with Google
-2. NextAuth completes Google OAuth (admin email is whitelisted via `ADMIN_EMAIL` env var even if not in `ALLOWED_EMAILS`)
-3. `/api/admin/verify` checks email against `ADMIN_EMAIL`, mints a signed 1-hour `admin_session` JWT cookie, redirects to `/admin`
-4. Middleware (`proxy.ts`) verifies the cookie on every `/admin/*` request
+2. NextAuth completes Google OAuth (admin email is allowed even if not in `ALLOWED_EMAILS`)
+3. `/api/admin/verify` checks the email against **both** the `ADMIN_EMAIL` env var and the `admin_users` Supabase table — either match grants access
+4. On success, a signed 1-hour `admin_session` JWT cookie is minted and the user is redirected to `/admin`
+5. Middleware (`proxy.ts`) verifies the cookie on every `/admin/*` request
+6. `auth.ts` also checks `admin_users` so invited admins can sign in to the staff radio app without being in `ALLOWED_EMAILS`
+
+## Admin Access Management
+
+Admins can invite other Google accounts to the admin panel from the **Admin Access** tab in the dashboard:
+
+- The owner email (`ADMIN_EMAIL` env var) always has access and appears at the top of the list with an "Owner" badge
+- Invited admins are stored in the `admin_users` Supabase table (`email`, `invited_by`, `created_at`)
+- Invites take effect immediately on the invitee's next login attempt — no email or action required on their end
+- The invite form submits via a Next.js Server Action that reads the caller's `admin_session` cookie to record `invited_by`
+
+### `admin_users` table schema
+
+```sql
+CREATE TABLE admin_users (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email       TEXT NOT NULL UNIQUE,
+  invited_by  TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
 
 ## Analytics
 
-Track play events are written to Supabase (`track_plays` table) when a track has been playing for 5+ seconds (same threshold as the existing localStorage play history). The admin dashboard shows today's plays in Vancouver time, sorted chronologically.
+Track play events are written to Supabase (`track_plays` table) when a track has been playing for 5+ seconds. Drive announcement plays are recorded immediately when playback begins (no delay threshold). The admin dashboard shows today's plays in Vancouver time, sorted chronologically by first play.
+
+Both tracks and announcements appear in the same table, distinguished by the `play_type` column:
+
+| `play_type` | Source | Dashboard display |
+|---|---|---|
+| `track` | Spotify Web Playback SDK | White row, artist shown |
+| `announcement` | Drive MP3 via Web Audio API | Orange row, "Announcement" badge, artist column blank |
+
+### `track_plays` table schema (relevant columns)
+
+| Column | Type | Notes |
+|---|---|---|
+| `track_id` | text | Spotify track ID or Drive file ID |
+| `track_name` | text | Display name |
+| `artist_name` | text | Spotify artist(s); empty string for announcements |
+| `play_type` | text | `'track'` (default) or `'announcement'` |
+| `played_at` | timestamptz | UTC timestamp of playback start |
+| `environment` | text | `'dev'` or `'prod'` |
+| `instance_id` | text | e.g. `'nsbp'` |
+
+## Admin Dashboard UI
+
+The dashboard at `/admin` uses a tab layout (client component `AdminTabs.tsx`) with all data fetched server-side in `page.tsx` and passed as props — tab switching is instant with no additional network requests.
+
+| Tab | Contents |
+|---|---|
+| **Track Analytics** | Stat cards (Tracks, Announcements, Total Plays, Most Played) + chronological play table with orange announcement rows + Refresh button |
+| **Admin Access** | Admin users table (owner row + invited rows) + invite form |
 
 ## Multi-Instance Isolation (Temporary)
 
@@ -150,9 +200,18 @@ Features planned but not yet built, in rough priority order.
 | # | Feature | Notes |
 |---|---|---|
 | 1 | **Multi-park / multi-tenant architecture** | Current `environment` + `instance_id` column approach is a temporary workaround. Production solution: one Supabase project per park (Option A). Each Vercel deployment gets its own `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Remove `environment` and `instance_id` columns from `track_plays` at that time. |
-| 2 | **User access control** | Manage which Google accounts can log into a given instance of the radio app |
+| 2 | **Staff user access control** | Manage which Google accounts can log into the *radio app itself* (currently controlled by the `ALLOWED_EMAILS` env var — no UI). Note: admin panel access is already manageable via the Admin Access tab. |
 | 3 | **Banned tracks** | Prevent specific Spotify tracks from playing |
 | 4 | **Scheduled announcement injection** | Queue Drive MP3s to play automatically at set times |
 | 5 | **Private announcements** | Announcements not visible to regular staff |
 | 6 | **Remote control** | Control playback (play, pause, skip, volume) from the admin panel |
 | 7 | **Historical analytics** | View play history beyond today (7-day, monthly views) |
+
+## Recently Shipped (v1.6.1)
+
+| Feature | Details |
+|---|---|
+| **Announcement analytics** | Drive MP3 announcements are tracked in `track_plays` with `play_type = 'announcement'`; displayed in orange in the admin dashboard |
+| **Admin invite system** | Admin Access tab in the dashboard — invite Google accounts to the admin panel via `admin_users` table; takes effect immediately |
+| **Admin dashboard tab UI** | Track Analytics and Admin Access are now tabs (client component `AdminTabs.tsx`); data is all server-fetched, tab switching is instant |
+| **Browser tab title** | `/admin` now shows "NSBP Radio Administrator" in the browser tab via Next.js `metadata` export |
