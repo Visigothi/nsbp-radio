@@ -6,6 +6,23 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ---
 
+# Architectural Invariants
+
+Rules that all new features must follow. Do not deviate without updating this section.
+
+1. **Server-only Supabase access for writes.** `lib/supabase.ts` uses the service_role key — never import it in client components. Browser-side Realtime subscriptions (Phase 3) will use a separate anon-key client (`lib/supabase-browser.ts`) with RLS enabled.
+2. **Admin auth via `admin_session` JWT cookie.** All new admin tabs and server actions verify the admin session, not the NextAuth session. The pattern is established in `app/admin/page.tsx` server actions.
+3. **Park browser state in Zustand stores.** New reactive state (banned tracks list, remote control commands) follows the existing `lib/*-store.ts` pattern with `"use client"` directives.
+4. **No direct browser-to-browser communication.** Admin-to-park communication always goes through Supabase (table writes + Realtime subscriptions). Never attempt WebRTC, postMessage, or other direct channels.
+5. **Environment isolation via env vars, not code branches.** `SUPABASE_URL` handles per-park separation. Do not add if/else blocks for different parks in application code.
+6. **Check ROADMAP.md before starting new features.** Verify the feature's phase prerequisites are complete before building.
+
+For the phased feature backlog and target architecture, see [ROADMAP.md](./ROADMAP.md).
+
+For shipped features history, see [CHANGELOG.md](./CHANGELOG.md).
+
+---
+
 # OAuth Development Environment Setup
 
 This app uses two separate OAuth providers that require different origins in development, which creates a cross-origin challenge. Understanding this setup is essential before touching any auth-related code.
@@ -111,7 +128,8 @@ Before running `vercel --prod`:
 | `SUPABASE_URL` | `https://frbqjdmpdashtgropoip.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | (secret) |
 | `ADMIN_EMAIL` | `mike@westcoastbikeparks.ca` (park production) |
-| `INSTANCE_ID` | `nsbp` (park production) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | (public, needed for Phase 3 — Realtime subscriptions in the browser) |
+| `INSTANCE_ID` | `nsbp` (park production, removed in Phase 1) |
 
 ---
 
@@ -194,41 +212,4 @@ Currently all deployments share one Supabase project. Two columns tag every row 
 
 ---
 
-# Admin Backlog
-
-Features planned but not yet built, in rough priority order.
-
-| # | Feature | Notes |
-|---|---|---|
-| 1 | **Multi-park / multi-tenant architecture** | Current `environment` + `instance_id` column approach is a temporary workaround. Production solution: one Supabase project per park (Option A). Each Vercel deployment gets its own `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Remove `environment` and `instance_id` columns from `track_plays` at that time. |
-| 2 | **Staff user access control** | Manage which Google accounts can log into the *radio app itself* (currently controlled by the `ALLOWED_EMAILS` env var — no UI). Note: admin panel access is already manageable via the Admin Access tab. |
-| 3 | **Banned tracks** | Prevent specific Spotify tracks from playing |
-| 4 | **Scheduled announcement injection** | Queue Drive MP3s to play automatically at set times |
-| 5 | **Private announcements** | Announcements not visible to regular staff |
-| 6 | **Remote control** | Control playback (play, pause, skip, volume) from the admin panel |
-| 7 | **Historical analytics** | View play history beyond today (7-day, monthly views) |
-
-## Recently Shipped (v1.6.3)
-
-| Feature | Details |
-|---|---|
-| **UI Themes** | Three selectable themes in Settings → Theme dropdown: North Shore (default — dark/black, warm orange), Mackenzie (pink accent palette, bright pink section headers and Now Playing border), Eli (bold black, bright `#FF9000` orange, 3px thick borders, peach `#FFCBA4` Now Playing fill). Theme persisted to localStorage via `lib/theme-store.ts` (Zustand). Applied as `data-theme` on `<html>` by AppShell.tsx. |
-| **Theme-aware CSS system** | CSS custom property overrides in `globals.css` per `[data-theme]` selector. `--color-orange-*` vars replaced per theme, switching all Tailwind `orange-*` utilities automatically. Blob vars, Now Playing border/width/bg, section headers (`.theme-header`), and button borders all theme-aware. |
-| **Eli theme button styling** | Skip, Queue, and Play Now buttons in Eli theme render with 3px solid `#FF9000` border, black background, bold white text. Queue/Play Now buttons gained `border border-zinc-700` class so the `button[class*="border"]` CSS rule applies. Eli rule also overrides `background: #000`. |
-
-## Recently Shipped (v1.6.2)
-
-| Feature | Details |
-|---|---|
-| **Remove admin** | Owner can remove any invited admin via a Remove button (with confirmation dialog). Owner cannot remove themselves. |
-| **Transfer ownership** | Owner can promote any admin to Owner via a role dropdown (with confirmation dialog). Previous owner is demoted to Admin. Only one Owner at a time. Non-owners cannot see or use these controls. |
-| **Role column in admin_users** | `role TEXT NOT NULL DEFAULT 'admin'` column added to `admin_users` table. DB `role='owner'` takes precedence over `ADMIN_EMAIL` env var for owner resolution; env var remains as bootstrap fallback. |
-
-## Recently Shipped (v1.6.1)
-
-| Feature | Details |
-|---|---|
-| **Announcement analytics** | Drive MP3 announcements are tracked in `track_plays` with `play_type = 'announcement'`; displayed in orange in the admin dashboard |
-| **Admin invite system** | Admin Access tab in the dashboard — invite Google accounts to the admin panel via `admin_users` table; takes effect immediately |
-| **Admin dashboard tab UI** | Track Analytics and Admin Access are now tabs (client component `AdminTabs.tsx`); data is all server-fetched, tab switching is instant |
-| **Browser tab title** | `/admin` now shows "NSBP Radio Administrator" in the browser tab via Next.js `metadata` export |
+For the phased feature backlog, see [ROADMAP.md](./ROADMAP.md). For shipped features, see [CHANGELOG.md](./CHANGELOG.md).
