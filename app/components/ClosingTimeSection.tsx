@@ -127,7 +127,7 @@ export default function ClosingTimeSection() {
   return (
     <div className="mt-4 pt-4" style={{ borderTop: "1px solid rgba(255,157,26,0.15)" }}>
       {/* Section heading */}
-      <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-3">
+      <h2 className="theme-header text-sm font-semibold uppercase tracking-wider mb-3">
         Closing Time
       </h2>
 

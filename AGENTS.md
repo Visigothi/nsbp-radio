@@ -144,7 +144,8 @@ CREATE TABLE admin_users (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email       TEXT NOT NULL UNIQUE,
   invited_by  TEXT NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  role        TEXT NOT NULL DEFAULT 'admin'  -- 'admin' or 'owner'
 );
 ```
 
@@ -206,6 +207,22 @@ Features planned but not yet built, in rough priority order.
 | 5 | **Private announcements** | Announcements not visible to regular staff |
 | 6 | **Remote control** | Control playback (play, pause, skip, volume) from the admin panel |
 | 7 | **Historical analytics** | View play history beyond today (7-day, monthly views) |
+
+## Recently Shipped (v1.6.3)
+
+| Feature | Details |
+|---|---|
+| **UI Themes** | Three selectable themes in Settings → Theme dropdown: North Shore (default — dark/black, warm orange), Mackenzie (pink accent palette, bright pink section headers and Now Playing border), Eli (bold black, bright `#FF9000` orange, 3px thick borders, peach `#FFCBA4` Now Playing fill). Theme persisted to localStorage via `lib/theme-store.ts` (Zustand). Applied as `data-theme` on `<html>` by AppShell.tsx. |
+| **Theme-aware CSS system** | CSS custom property overrides in `globals.css` per `[data-theme]` selector. `--color-orange-*` vars replaced per theme, switching all Tailwind `orange-*` utilities automatically. Blob vars, Now Playing border/width/bg, section headers (`.theme-header`), and button borders all theme-aware. |
+| **Eli theme button styling** | Skip, Queue, and Play Now buttons in Eli theme render with 3px solid `#FF9000` border, black background, bold white text. Queue/Play Now buttons gained `border border-zinc-700` class so the `button[class*="border"]` CSS rule applies. Eli rule also overrides `background: #000`. |
+
+## Recently Shipped (v1.6.2)
+
+| Feature | Details |
+|---|---|
+| **Remove admin** | Owner can remove any invited admin via a Remove button (with confirmation dialog). Owner cannot remove themselves. |
+| **Transfer ownership** | Owner can promote any admin to Owner via a role dropdown (with confirmation dialog). Previous owner is demoted to Admin. Only one Owner at a time. Non-owners cannot see or use these controls. |
+| **Role column in admin_users** | `role TEXT NOT NULL DEFAULT 'admin'` column added to `admin_users` table. DB `role='owner'` takes precedence over `ADMIN_EMAIL` env var for owner resolution; env var remains as bootstrap fallback. |
 
 ## Recently Shipped (v1.6.1)
 

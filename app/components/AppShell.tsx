@@ -26,6 +26,7 @@ import { useEffect } from "react"
 import dynamic from "next/dynamic"
 import { useCommercialStore } from "@/lib/commercial-store"
 import { useSpotifyStore } from "@/lib/spotify-store"
+import { useThemeStore } from "@/lib/theme-store"
 import { useExplicitFilter } from "@/lib/use-explicit-filter"
 import { useSkippedFilter } from "@/lib/use-skipped-filter"
 
@@ -69,6 +70,12 @@ export default function AppShell() {
       }
     }
   }, [setTokens])
+
+  // Apply data-theme attribute to <html> so CSS variable overrides in globals.css take effect
+  const theme = useThemeStore((s) => s.theme)
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme)
+  }, [theme])
 
   // Read announcement status to dim/disable the Spotify panel during playback
   const status = useCommercialStore((s) => s.status)

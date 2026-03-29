@@ -1,25 +1,136 @@
 @import "tailwindcss";
 
+/* ── Theme-aware accent variables ────────────────────────────────────────── */
+/*
+ * --accent-*        oklch color values used by @theme inline below.
+ *                   Overriding them per [data-theme] switches every Tailwind
+ *                   orange-* utility to the new palette automatically.
+ * --brand-orange    Hex accent used in inline styles and legacy CSS.
+ * --brand-orange-*  Pre-built rgba variants for borders, glows, and fills.
+ *
+ * Applied by AppShell.tsx setting data-theme on <html>.
+ */
+
 :root {
+  /* ── Base colours ── */
   --background: #000000;
   --foreground: #ededed;
-  --brand-orange: #ff9d1a;
+
+  /* ── North Shore theme (default) — warm orange ── */
+  --brand-orange:     #ff9d1a;
   --brand-orange-dim: rgba(255, 157, 26, 0.12);
   --brand-orange-glow: rgba(255, 157, 26, 0.25);
-  --bg-speed: 30;
+
+  /* Semantic tokens used in inline styles */
+  --accent-border:     rgba(255, 157, 26, 0.20);
+  --accent-hover-bg:   rgba(255, 157, 26, 0.10);
+  --accent-hover-border: rgba(255, 157, 26, 0.45);
+
+  /* Now Playing card */
+  --now-playing-border:       rgba(255, 157, 26, 0.55);
+  --now-playing-border-width: 1px;
+  --now-playing-bg:           rgba(255, 157, 26, 0.03);
+
+  /* Animated background blob colours */
+  --blob-a-1: rgba(255, 157, 26, 0.13);
+  --blob-a-2: rgba(255, 157, 26, 0.05);
+  --blob-b-1: rgba(190, 210, 255, 0.07);
+  --blob-b-2: rgba(190, 210, 255, 0.02);
+  --blob-c-1: rgba(255, 157, 26, 0.08);
+  --blob-line: rgba(255, 157, 26, 0.025);
+
+  /* Misc */
+  --bg-speed:   30;
   --bg-opacity: 1;
 }
 
+/* ── Mackenzie theme — pink palette ──────────────────────────────────────── */
+/*
+ * Tailwind v4 exposes its colour palette as CSS custom properties
+ * (e.g. var(--color-orange-500) inside compiled utility classes).
+ * Overriding --color-orange-* here causes every orange-* Tailwind utility
+ * (text-orange-400, bg-orange-500/20, border-orange-500/30, etc.) to switch
+ * to the pink palette automatically — no component changes required.
+ */
+[data-theme="mackenzie"] {
+  --brand-orange:     #ec4899;
+  --brand-orange-dim: rgba(236, 72, 153, 0.12);
+  --brand-orange-glow: rgba(236, 72, 153, 0.25);
+
+  /* Override Tailwind's orange palette → pink */
+  --color-orange-300: oklch(0.823 0.120 349.761); /* pink-300 */
+  --color-orange-400: oklch(0.718 0.202 349.761); /* pink-400 */
+  --color-orange-500: oklch(0.656 0.241 354.309); /* pink-500 */
+  --color-orange-600: oklch(0.592 0.249   0.584); /* pink-600 */
+
+  --accent-border:       rgba(236, 72, 153, 0.20);
+  --accent-hover-bg:     rgba(236, 72, 153, 0.10);
+  --accent-hover-border: rgba(236, 72, 153, 0.45);
+
+  /* Now Playing card — bright pink border, dark pink interior */
+  --now-playing-border: rgba(236,  72, 153, 0.85);
+  --now-playing-bg:     rgba(236,  72, 153, 0.12);
+
+  --blob-a-1: rgba(236,  72, 153, 0.13);
+  --blob-a-2: rgba(236,  72, 153, 0.05);
+  --blob-b-1: rgba(255, 182, 213, 0.07);
+  --blob-b-2: rgba(255, 182, 213, 0.02);
+  --blob-c-1: rgba(219,  39, 119, 0.08);
+  --blob-line: rgba(236,  72, 153, 0.025);
+}
+
+/* ── Elie theme — bold black, bright orange, peach Now Playing ───────────── */
+/*
+ * Aesthetic: thick borders, maximum contrast, bold white text, #FF9000 orange.
+ * --peach is a skin-tone warm colour used exclusively as the Now Playing fill.
+ */
+[data-theme="eli"] {
+  --brand-orange:     #FF9000;
+  --brand-orange-dim: rgba(255, 144, 0, 0.15);
+  --brand-orange-glow: rgba(255, 144, 0, 0.35);
+
+  /* Override Tailwind's orange palette — brighter, more saturated */
+  --color-orange-300: oklch(0.88 0.14 62);   /* warm bright highlight */
+  --color-orange-400: oklch(0.80 0.19 57);   /* primary accent light */
+  --color-orange-500: oklch(0.73 0.22 52);   /* primary accent ≈ #FF9000 */
+  --color-orange-600: oklch(0.65 0.22 48);   /* deeper accent */
+
+  --accent-border:       rgba(255, 144, 0, 0.30);
+  --accent-hover-bg:     rgba(255, 144, 0, 0.14);
+  --accent-hover-border: rgba(255, 144, 0, 0.65);
+
+  /* Peach — warm skin tone. Used as the Now Playing card interior. */
+  --peach: #FFCBA4;
+  --now-playing-border:       #FF9000;  /* solid bright orange */
+  --now-playing-border-width: 3px;     /* 3× the default 1px */
+  --now-playing-bg:           rgba(255, 180, 120, 0.22); /* visible peach fill */
+
+  /* Animated background blobs */
+  --blob-a-1: rgba(255, 144,   0, 0.15);
+  --blob-a-2: rgba(255, 144,   0, 0.06);
+  --blob-b-1: rgba(255, 200, 140, 0.08);
+  --blob-b-2: rgba(255, 200, 140, 0.03);
+  --blob-c-1: rgba(255, 100,   0, 0.10);
+  --blob-line: rgba(255, 144,  0, 0.030);
+}
+
+/* ── Tailwind theme tokens ───────────────────────────────────────────────── */
+/*
+ * `@theme inline` wires Tailwind CSS utilities to runtime CSS custom
+ * properties, so swapping --accent-* variables (via data-theme) causes all
+ * orange-* Tailwind utilities to switch palette automatically.
+ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-brand: #ff9d1a;
+  --color-brand:      var(--brand-orange);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
 }
 
 body {
-  background: #000000;
+  background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
@@ -29,8 +140,32 @@ body {
   transition: background 150ms ease, border-color 150ms ease;
 }
 .hover-brand:hover {
-  background: rgba(255, 157, 26, 0.1) !important;
-  border-color: rgba(255, 157, 26, 0.45) !important;
+  background: var(--accent-hover-bg) !important;
+  border-color: var(--accent-hover-border) !important;
+}
+
+/* ── Section header colour — zinc-300 default, bright accent in themed modes ─ */
+.theme-header { color: rgb(212, 212, 216); } /* zinc-300 */
+[data-theme="mackenzie"] .theme-header { color: var(--brand-orange); }
+[data-theme="eli"]      .theme-header { color: #ffffff; font-weight: 700; }
+
+/* ── Eli theme: thick orange borders + bold button aesthetic ─────────────── */
+/*
+ * Targets buttons that already carry a visible border (action buttons, not
+ * icon-only controls like prev/next/gear/close which have no border class).
+ * Also thickens borders on text inputs and selects.
+ */
+[data-theme="eli"] button[class*="border"] {
+  border: 3px solid #FF9000 !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  background: #000000 !important;
+}
+
+[data-theme="eli"] input:not([type="range"]):not([type="checkbox"]),
+[data-theme="eli"] select,
+[data-theme="eli"] textarea {
+  border: 3px solid #FF9000 !important;
 }
 
 /* ── Overplayed alert blink — fires once every 3 s ──────────────────────── */
@@ -49,7 +184,7 @@ body {
 
 /* ── Animated background ─────────────────────────────────────────────────── */
 
-/* Blob A — warm orange, lower-left, 70s loop */
+/* Blob A — warm glow, lower-left, 70s loop */
 @keyframes blob-a {
   0%   { transform: translate(0vw,   0vh);  }
   20%  { transform: translate(6vw,  -4vh);  }
@@ -57,10 +192,9 @@ body {
   70%  { transform: translate(4vw,   7vh);  }
   100% { transform: translate(0vw,   0vh);  }
 }
-/* Duration = base / --bg-speed (default 1). Higher speed = shorter duration = faster. */
 .blob-a { animation: blob-a calc(70s / var(--bg-speed, 1)) ease-in-out infinite; }
 
-/* Blob B — cool blue-white, upper-right */
+/* Blob B — cool accent, upper-right */
 @keyframes blob-b {
   0%   { transform: translate(0vw,  0vh);  }
   30%  { transform: translate(-6vw, 5vh);  }
@@ -69,7 +203,7 @@ body {
 }
 .blob-b { animation: blob-b calc(90s / var(--bg-speed, 1)) ease-in-out infinite; }
 
-/* Blob C — secondary orange, lower-right */
+/* Blob C — secondary bloom, center-right */
 @keyframes blob-c {
   0%   { transform: translate(0vw,   0vh);  }
   25%  { transform: translate(-7vw, -5vh);  }

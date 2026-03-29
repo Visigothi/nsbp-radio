@@ -8,7 +8,7 @@
  * tab switch is instant with no additional network requests.
  */
 
-import { useState } from "react"
+import { useState, useTransition, useRef, useEffect } from "react"
 
 // ── Types passed in from the server page ─────────────────────────────────────
 
@@ -26,6 +26,7 @@ export interface AdminUser {
   email: string
   invited_by: string
   created_at: string
+  role: "admin" | "owner"
 }
 
 interface AdminTabsProps {
@@ -34,8 +35,12 @@ interface AdminTabsProps {
   todayLabel: string
   adminUsers: AdminUser[]
   ownerEmail: string
-  /** Server action passed through from page.tsx for the invite form */
+  currentUserEmail: string
+  isCurrentUserOwner: boolean
+  /** Server actions passed through from page.tsx */
   inviteAction: (formData: FormData) => Promise<void>
+  removeAdminAction: (formData: FormData) => Promise<void>
+  transferOwnershipAction: (formData: FormData) => Promise<void>
 }
 
 type Tab = "analytics" | "access"
@@ -48,15 +53,68 @@ export default function AdminTabs({
   todayLabel,
   adminUsers,
   ownerEmail,
+  currentUserEmail,
+  isCurrentUserOwner,
   inviteAction,
+  removeAdminAction,
+  transferOwnershipAction,
 }: AdminTabsProps) {
   const [activeTab, setActiveTab] = useState<Tab>("analytics")
+  const [isPending, startTransition] = useTransition()
+
+  // Custom confirm dialog state
+  const [dialog, setDialog] = useState<{
+    message: string
+    subMessage?: string
+    onConfirm: () => void
+  } | null>(null)
 
   const trackCount = allRows.filter((r) => r.playType === "track").length
   const announcementCount = allRows.filter((r) => r.playType === "announcement").length
 
+  // The owner row is always rendered separately at the top. Filter them out of
+  // the regular admin list to avoid showing them twice.
+  const regularAdmins = adminUsers.filter((u) => u.email !== ownerEmail)
+
+  function handleRemove(email: string) {
+    setDialog({
+      message: `Remove ${email}?`,
+      subMessage: "They will immediately lose access to this admin panel.",
+      onConfirm: () => {
+        const fd = new FormData()
+        fd.set("email", email)
+        startTransition(() => removeAdminAction(fd))
+      },
+    })
+  }
+
+  function handleTransferOwnership(email: string) {
+    setDialog({
+      message: `Transfer ownership to ${email}?`,
+      subMessage: "You will become an Admin and immediately lose Owner privileges.",
+      onConfirm: () => {
+        const fd = new FormData()
+        fd.set("email", email)
+        startTransition(() => transferOwnershipAction(fd))
+      },
+    })
+  }
+
   return (
     <div>
+      {/* Custom confirm dialog */}
+      {dialog && (
+        <ConfirmDialog
+          message={dialog.message}
+          subMessage={dialog.subMessage}
+          onConfirm={() => {
+            dialog.onConfirm()
+            setDialog(null)
+          }}
+          onCancel={() => setDialog(null)}
+        />
+      )}
+
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-zinc-800 mb-6">
         <TabButton
@@ -204,24 +262,39 @@ export default function AdminTabs({
                   <th className="text-left px-4 py-3 text-zinc-400 font-medium">Email</th>
                   <th className="text-left px-4 py-3 text-zinc-400 font-medium hidden sm:table-cell">Invited By</th>
                   <th className="text-right px-4 py-3 text-zinc-400 font-medium w-28 hidden sm:table-cell">Added</th>
+                  {/* Actions column — only rendered for the owner */}
+                  {isCurrentUserOwner && (
+                    <th className="text-right px-4 py-3 text-zinc-400 font-medium w-48">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
-                {/* Owner row — always shown, sourced from env var */}
+
+                {/* Owner row — always shown at top */}
                 <tr className="bg-zinc-950">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <span className="text-zinc-200">{ownerEmail}</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-zinc-700 text-zinc-400 tracking-wide uppercase">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30 tracking-wide uppercase">
                         Owner
                       </span>
+                      {ownerEmail === currentUserEmail && (
+                        <span className="text-zinc-600 text-xs">(you)</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-zinc-600 hidden sm:table-cell italic">—</td>
                   <td className="px-4 py-3 text-right text-zinc-600 text-xs hidden sm:table-cell">—</td>
+                  {/* Owner cannot act on their own row */}
+                  {isCurrentUserOwner && <td className="px-4 py-3" />}
                 </tr>
-                {adminUsers.map((u) => (
-                  <tr key={u.email} className="bg-zinc-950 hover:bg-zinc-900/60 transition-colors">
+
+                {/* Regular admin rows */}
+                {regularAdmins.map((u) => (
+                  <tr
+                    key={u.email}
+                    className={`bg-zinc-950 hover:bg-zinc-900/60 transition-colors ${isPending ? "opacity-60" : ""}`}
+                  >
                     <td className="px-4 py-3 text-zinc-200">{u.email}</td>
                     <td className="px-4 py-3 text-zinc-500 hidden sm:table-cell truncate max-w-[200px]">
                       {u.invited_by}
@@ -229,8 +302,54 @@ export default function AdminTabs({
                     <td className="px-4 py-3 text-right text-zinc-500 text-xs hidden sm:table-cell">
                       {formatShortDate(u.created_at)}
                     </td>
+
+                    {/* Actions — only the owner sees these */}
+                    {isCurrentUserOwner && (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          {/* Role dropdown: Make Owner */}
+                          <select
+                            defaultValue="admin"
+                            disabled={isPending}
+                            onChange={(e) => {
+                              if (e.target.value === "owner") {
+                                handleTransferOwnership(u.email)
+                                // Reset the select back to "admin" — the page will
+                                // revalidate and re-render once the action completes
+                                e.target.value = "admin"
+                              }
+                            }}
+                            className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-zinc-500 cursor-pointer hover:border-zinc-500 transition-colors"
+                          >
+                            <option value="admin">Admin</option>
+                            <option value="owner">Make Owner</option>
+                          </select>
+
+                          {/* Remove button */}
+                          <button
+                            onClick={() => handleRemove(u.email)}
+                            disabled={isPending}
+                            className="px-2.5 py-1 rounded-lg border border-red-500/25 bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20 hover:border-red-500/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
+
+                {/* Empty state when no invited admins exist */}
+                {regularAdmins.length === 0 && (
+                  <tr className="bg-zinc-950">
+                    <td
+                      colSpan={isCurrentUserOwner ? 4 : 3}
+                      className="px-4 py-6 text-center text-zinc-600 text-xs italic"
+                    >
+                      No invited admins yet.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -303,6 +422,65 @@ function RefreshIcon() {
     <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
       <path d="M13.65 2.35A8 8 0 1 0 15 8h-1.5a6.5 6.5 0 1 1-1.09-3.58L10 6h5V1l-1.35 1.35z" fill="currentColor" />
     </svg>
+  )
+}
+
+// ── Confirm dialog ────────────────────────────────────────────────────────────
+
+function ConfirmDialog({
+  message,
+  subMessage,
+  onConfirm,
+  onCancel,
+}: {
+  message: string
+  subMessage?: string
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null)
+
+  // Focus Cancel by default so accidental Enter doesn't confirm
+  useEffect(() => {
+    cancelRef.current?.focus()
+  }, [])
+
+  // Close on Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onCancel()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onCancel])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel() }}
+    >
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
+        <p className="text-white font-semibold text-base leading-snug">{message}</p>
+        {subMessage && (
+          <p className="text-zinc-400 text-sm mt-2 leading-relaxed">{subMessage}</p>
+        )}
+        <div className="flex justify-end gap-3 mt-6">
+          <button
+            ref={cancelRef}
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 border border-zinc-700 hover:border-zinc-500 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600/80 text-white border border-red-500/50 hover:bg-red-600 transition-colors"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

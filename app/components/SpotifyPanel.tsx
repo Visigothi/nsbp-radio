@@ -448,14 +448,14 @@ export default function SpotifyPanel() {
   return (
     <div className="flex flex-col gap-4">
       {/* NOW PLAYING heading */}
-      <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">
+      <h2 className="theme-header text-sm font-semibold uppercase tracking-wider">
         Now Playing
       </h2>
 
-      {/* Orange rounded box: player only */}
+      {/* Rounded box: player only — border/bg switch with theme */}
       <div
         className="rounded-xl p-4 mt-1 flex flex-col gap-4"
-        style={{ border: "1px solid rgba(255,157,26,0.55)", background: "rgba(255,157,26,0.03)" }}
+        style={{ border: "var(--now-playing-border-width, 1px) solid var(--now-playing-border)", background: "var(--now-playing-bg)" }}
       >
       {/* Now playing card — compact horizontal layout, ~5% narrower than track list */}
       {playerState ? (
@@ -599,7 +599,7 @@ export default function SpotifyPanel() {
         <>
           {/* Playlist selector */}
           <div>
-            <label className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-2 block">
+            <label className="theme-header text-sm font-semibold uppercase tracking-wider mb-2 block">
               Playlist
             </label>
             {loadingPlaylists ? (
@@ -632,7 +632,7 @@ export default function SpotifyPanel() {
               while the track list below shows Spotify's upcoming queue tracks. */}
           {(queue.length > 0 || (announcementStatus === "queued" && queuedAnnouncement) || closingTimeQueued || queuedSearchTrack) && (
             <div>
-              <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-2">
+              <h3 className="theme-header text-sm font-semibold uppercase tracking-wider mb-2">
                 Up Next
               </h3>
 
@@ -958,7 +958,7 @@ function TrackRow({
             <button
               onClick={(e) => { e.stopPropagation(); onQueue?.() }}
               disabled={isQueued}
-              className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="text-xs px-2 py-1 rounded border border-zinc-700 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               title="Add to queue — plays after current song"
             >
               Queue
@@ -966,7 +966,7 @@ function TrackRow({
             <button
               onClick={(e) => { e.stopPropagation(); onPlayNow?.() }}
               disabled={isQueued}
-              className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="text-xs px-2 py-1 rounded border border-zinc-700 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               title="Play now — fades out current track, plays this song, then resumes playlist"
             >
               Play Now

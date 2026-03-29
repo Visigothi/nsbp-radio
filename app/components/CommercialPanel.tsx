@@ -79,7 +79,7 @@ export default function CommercialPanel() {
     <div className="flex flex-col h-full gap-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">
+        <h2 className="theme-header text-sm font-semibold uppercase tracking-wider">
           Announcements
         </h2>
       </div>
@@ -232,7 +232,7 @@ function CommercialCard({
         <button
           onClick={onQueue}
           disabled={disabled || isQueued || isPlaying}
-          className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="text-xs px-2 py-1 rounded border border-zinc-700 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           title="Play after current track ends"
         >
           Queue
@@ -240,7 +240,7 @@ function CommercialCard({
         <button
           onClick={onInterrupt}
           disabled={disabled || isQueued || isPlaying}
-          className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="text-xs px-2 py-1 rounded border border-zinc-700 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           title="Fade out music and play now"
         >
           Play Now

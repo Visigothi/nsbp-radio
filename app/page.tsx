@@ -45,7 +45,7 @@ export default async function Home() {
       <header
         className="relative z-10 flex items-center justify-between px-5 py-2 shrink-0"
         style={{
-          borderBottom: "1px solid rgba(255, 157, 26, 0.2)",
+          borderBottom: "1px solid var(--accent-border)",
           background: "rgba(0,0,0,0.6)",
           backdropFilter: "blur(8px)",
         }}

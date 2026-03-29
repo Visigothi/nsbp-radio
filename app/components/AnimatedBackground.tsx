@@ -2,9 +2,11 @@
 
 /**
  * Animated background: three slowly drifting radial light blobs
- * (warm orange + cool neutral) layered over a black base.
- * Fine contour lines add texture at very low opacity.
+ * layered over a black base. Fine contour lines add texture at very low opacity.
  * Background stays predominantly black; blobs are 8–13% opacity.
+ *
+ * Blob colours use CSS variables (--blob-*) defined in globals.css so they
+ * switch automatically when the active theme changes via data-theme on <html>.
  */
 export default function AnimatedBackground() {
   return (
@@ -13,7 +15,7 @@ export default function AnimatedBackground() {
       className="fixed inset-0 pointer-events-none select-none overflow-hidden"
       style={{ zIndex: 0, opacity: "var(--bg-opacity, 1)" } as React.CSSProperties}
     >
-      {/* Blob A — large warm orange glow, lower-left */}
+      {/* Blob A — large warm glow, lower-left */}
       <div
         className="absolute blob-a"
         style={{
@@ -22,11 +24,11 @@ export default function AnimatedBackground() {
           left: "-40vw",
           top: "0vh",
           background:
-            "radial-gradient(ellipse at center, rgba(255,157,26,0.13) 0%, rgba(255,157,26,0.05) 45%, transparent 72%)",
+            "radial-gradient(ellipse at center, var(--blob-a-1) 0%, var(--blob-a-2) 45%, transparent 72%)",
         }}
       />
 
-      {/* Blob B — cool blue-white accent, upper-right, 90s drift */}
+      {/* Blob B — cool accent, upper-right, 90s drift */}
       <div
         className="absolute blob-b"
         style={{
@@ -35,11 +37,11 @@ export default function AnimatedBackground() {
           right: "-20vw",
           top: "-20vh",
           background:
-            "radial-gradient(ellipse at center, rgba(190,210,255,0.07) 0%, rgba(190,210,255,0.02) 50%, transparent 70%)",
+            "radial-gradient(ellipse at center, var(--blob-b-1) 0%, var(--blob-b-2) 50%, transparent 70%)",
         }}
       />
 
-      {/* Blob C — secondary orange bloom, center-right, 110s drift */}
+      {/* Blob C — secondary bloom, center-right, 110s drift */}
       <div
         className="absolute blob-c"
         style={{
@@ -48,7 +50,7 @@ export default function AnimatedBackground() {
           right: "-10vw",
           bottom: "-15vh",
           background:
-            "radial-gradient(ellipse at center, rgba(255,157,26,0.08) 0%, transparent 65%)",
+            "radial-gradient(ellipse at center, var(--blob-c-1) 0%, transparent 65%)",
         }}
       />
 
@@ -71,7 +73,7 @@ export default function AnimatedBackground() {
             89.3deg,
             transparent 0px,
             transparent 129px,
-            rgba(255,157,26,0.025) 130px
+            var(--blob-line) 130px
           )`,
         }}
       />

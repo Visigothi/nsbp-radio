@@ -21,9 +21,10 @@ import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import SpotifyAccountSection from "./SpotifyAccountSection"
 import { useCommercialStore } from "@/lib/commercial-store"
+import { useThemeStore, THEMES } from "@/lib/theme-store"
 
 /** Current app version — update this whenever a significant change is deployed */
-export const APP_VERSION = "v1.6.1 BETA"
+export const APP_VERSION = "v1.6.3 BETA"
 
 interface SettingsModalProps {
   /** Google account email shown in the Google Account section */
@@ -39,6 +40,8 @@ export default function SettingsModal({ email, signOutAction }: SettingsModalPro
     autoSkipEnabled, setAutoSkipEnabled,
     autoSkipThreshold, setAutoSkipThreshold,
   } = useCommercialStore()
+
+  const { theme, setTheme } = useThemeStore()
 
   return (
     <>
@@ -66,7 +69,7 @@ export default function SettingsModal({ email, signOutAction }: SettingsModalPro
             className="relative z-10 w-full max-w-md rounded-2xl p-6 shadow-2xl overflow-y-auto"
             style={{
               background: "rgba(18,18,18,0.97)",
-              border: "1px solid rgba(255,157,26,0.25)",
+              border: "1px solid var(--brand-orange-glow)",
               maxHeight: "calc(100vh - 2rem)",
             }}
           >
@@ -83,6 +86,22 @@ export default function SettingsModal({ email, signOutAction }: SettingsModalPro
                 <CloseIcon />
               </button>
             </div>
+
+            {/* ── Theme ──────────────────────────────────────────────────── */}
+            <Section label="Theme">
+              <select
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as typeof theme)}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-500 cursor-pointer"
+                style={{ accentColor: "var(--brand-orange)" }}
+              >
+                {THEMES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </Section>
 
             {/* ── App Version ────────────────────────────────────────────── */}
             <Section label="App Version">
