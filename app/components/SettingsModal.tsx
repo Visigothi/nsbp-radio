@@ -24,7 +24,7 @@ import { useCommercialStore } from "@/lib/commercial-store"
 import { useThemeStore, THEMES } from "@/lib/theme-store"
 
 /** Current app version — update this whenever a significant change is deployed */
-export const APP_VERSION = "v1.6.3 BETA"
+export const APP_VERSION = "v1.6.4.1 BETA"
 
 interface SettingsModalProps {
   /** Google account email shown in the Google Account section */
