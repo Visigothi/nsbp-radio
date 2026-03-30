@@ -764,7 +764,7 @@ export default function SpotifyPanel() {
       )}
       </div>{/* end Playlists/Search panel-card */}
 
-    </div>{/* end outer column */}
+    </div>
   )
 }
 
