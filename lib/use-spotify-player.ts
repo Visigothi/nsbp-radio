@@ -22,6 +22,11 @@
  *   We check expiry (with a 60s buffer) and call refreshAccessToken() if needed,
  *   then update the store with the fresh tokens before passing to the SDK.
  *
+ *   IMPORTANT: We use a tokensRef to give getOAuthToken always-current token
+ *   values without triggering player recreation. The effect only recreates the
+ *   player when the connected/disconnected state changes (tokens null → value or
+ *   value → null). Token refreshes (value → different value) update the ref only.
+ *
  * Cleanup:
  *   When the component unmounts or tokens are cleared, player.disconnect()
  *   is called to unregister the device from Spotify.
@@ -46,28 +51,73 @@ export function useSpotifyPlayer() {
   // even if the component re-renders between mount and unmount
   const playerRef = useRef<Spotify.Player | null>(null)
 
+  // Keep a ref to the latest tokens so getOAuthToken always reads fresh values.
+  //
+  // BUG THIS FIXES: Previously, `tokens` was used directly inside getOAuthToken
+  // (stale closure) and `tokens` was also in the useEffect dependency array.
+  // Every token refresh called setTokens(), which changed `tokens`, which
+  // triggered the effect's cleanup (player.disconnect()) and re-ran the effect
+  // (new player). This destroyed the active player on every refresh (~hourly),
+  // stopping music and showing the "Connect Spotify" screen.
+  //
+  // Fix: the effect only re-runs when the connected state changes (null ↔ value).
+  // getOAuthToken reads from tokensRef to always get the current token without
+  // needing the effect to re-run.
+  const tokensRef = useRef(tokens)
+
+  // Keep the ref in sync with the store on every render.
+  // This runs before the player effect, so tokensRef is always current.
+  useEffect(() => {
+    tokensRef.current = tokens
+  }, [tokens])
+
+  // Whether tokens exist at all — used as the effect dependency so the player
+  // is only created/destroyed when the user connects or disconnects, NOT on
+  // every token refresh.
+  const isConnected = !!tokens
+
   useEffect(() => {
     // Don't initialise until we have Spotify OAuth tokens
-    if (!tokens) return
+    if (!isConnected) return
+
+    console.log("[Spotify] Initialising player (connected state entered)")
 
     const initPlayer = () => {
       const player = new window.Spotify.Player({
         name: "NSBP Radio", // This name appears in Spotify's "Connect to a device" list
         /**
          * getOAuthToken is called by the SDK whenever it needs a valid access token.
-         * We check our stored expiry and refresh proactively to avoid playback interruptions.
+         * We read from tokensRef (not the closure) to always get the current value,
+         * and we refresh proactively if the token is within 60s of expiry.
          * The cb(token) callback must be called with the token for the SDK to proceed.
          */
         getOAuthToken: async (cb) => {
-          let current = tokens
-          if (Date.now() > current.expiresAt - 60_000) {
-            try {
-              current = await refreshAccessToken(current.refreshToken)
-              setTokens(current) // Update the store with fresh tokens
-            } catch {
-              console.error("Failed to refresh Spotify token")
-            }
+          const current = tokensRef.current
+          if (!current) {
+            console.error("[Spotify] getOAuthToken called but no tokens in store — cannot provide token")
+            return
           }
+
+          const msUntilExpiry = current.expiresAt - Date.now()
+          console.log(`[Spotify] getOAuthToken called — token expires in ${Math.round(msUntilExpiry / 1000)}s`)
+
+          if (msUntilExpiry < 60_000) {
+            console.log("[Spotify] Token expiring soon, refreshing...")
+            try {
+              const refreshed = await refreshAccessToken(current.refreshToken)
+              // Update ref immediately so subsequent calls use the new token
+              // before the Zustand store update propagates
+              tokensRef.current = refreshed
+              setTokens(refreshed)
+              console.log(`[Spotify] Token refreshed successfully — new expiry: ${new Date(refreshed.expiresAt).toISOString()}`)
+              cb(refreshed.accessToken)
+            } catch (err) {
+              console.error("[Spotify] Token refresh FAILED:", err, "— using stale token, playback may fail")
+              cb(current.accessToken) // attempt with stale token; SDK will fire auth_error if rejected
+            }
+            return
+          }
+
           cb(current.accessToken)
         },
         volume: 1.0, // Always start at full volume
@@ -79,6 +129,7 @@ export function useSpotifyPlayer() {
        * this specific player (play, queue, seek, shuffle, etc.).
        */
       player.addListener("ready", ({ device_id }) => {
+        console.log("[Spotify] Player ready — device_id:", device_id)
         setDeviceId(device_id)
         setIsReady(true)
       })
@@ -87,7 +138,8 @@ export function useSpotifyPlayer() {
        * "not_ready" fires when the player loses its connection to Spotify
        * (e.g. network interruption). The device_id is no longer valid.
        */
-      player.addListener("not_ready", () => {
+      player.addListener("not_ready", ({ device_id }) => {
+        console.warn("[Spotify] Player NOT READY (connection lost) — device_id:", device_id, new Date().toISOString())
         setIsReady(false)
       })
 
@@ -102,6 +154,7 @@ export function useSpotifyPlayer() {
       player.addListener("player_state_changed", (state) => {
         if (!state) {
           // null state means the player has no active context (nothing queued)
+          console.warn("[Spotify] player_state_changed: null state — player has no active context (playback dropped?)", new Date().toISOString())
           setPlayerState(null)
           return
         }
@@ -120,18 +173,19 @@ export function useSpotifyPlayer() {
       })
 
       // Log SDK errors — these appear in the browser console, not the UI
-      player.addListener("initialization_error", ({ message }) =>
-        console.error("Spotify init error:", message)
-      )
-      player.addListener("authentication_error", ({ message }) =>
-        console.error("Spotify auth error:", message)
-      )
+      player.addListener("initialization_error", ({ message }) => {
+        console.error("[Spotify] Initialization error:", message)
+      })
+      player.addListener("authentication_error", ({ message }) => {
+        console.error("[Spotify] Authentication error (token invalid/expired?):", message, new Date().toISOString())
+      })
       // account_error typically means the account is not Premium
-      player.addListener("account_error", ({ message }) =>
-        console.error("Spotify account error (Premium required?):", message)
-      )
+      player.addListener("account_error", ({ message }) => {
+        console.error("[Spotify] Account error (Premium required?):", message)
+      })
 
       player.connect() // Registers this tab as a Spotify device
+      console.log("[Spotify] player.connect() called — waiting for 'ready' event")
       playerRef.current = player
       setPlayer(player)
     }
@@ -150,10 +204,12 @@ export function useSpotifyPlayer() {
     }
 
     return () => {
-      // Clean up when tokens change (e.g. disconnect / switch account)
+      // Clean up when the user disconnects (isConnected goes false)
+      console.log("[Spotify] Cleanup: disconnecting player (isConnected changed to false)")
       playerRef.current?.disconnect()
     }
-  }, [tokens]) // eslint-disable-line react-hooks/exhaustive-deps
-  // Note: The deps array intentionally omits the setter callbacks — they are
-  // stable Zustand setters and including them would cause unnecessary re-runs.
+  }, [isConnected]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: intentionally depends on isConnected (not tokens) so the player is
+  // only recreated on connect/disconnect, not on every token refresh.
+  // Setter callbacks (setPlayer, setDeviceId, etc.) are stable Zustand refs.
 }
