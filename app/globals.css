@@ -159,7 +159,6 @@ body {
   background:    var(--panel-bg);
   border-radius: 12px;
   padding:       20px;
-  outline: 3px solid red; /* TEMP: visibility test */
 }
 
 /* ── Brand orange hover utility ─────────────────────────────────────────── */
