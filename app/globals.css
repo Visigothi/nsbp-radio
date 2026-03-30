@@ -25,7 +25,7 @@
    * Override any of these per [data-theme] or swap the .panel-card rule entirely
    * to re-skin the layout without touching component JSX.
    */
-  --panel-bg:                   #181818;
+  --panel-bg:                   #242424;
   --layout-inset:               10px;
   --panel-gap:                  10px;
   --announcements-list-max-h:   300px;
