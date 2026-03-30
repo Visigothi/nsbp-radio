@@ -189,7 +189,10 @@ export async function refreshAccessToken(refreshToken: string): Promise<SpotifyT
     body,
   })
 
-  if (!res.ok) throw new Error("Token refresh failed")
+  if (!res.ok) {
+    const body = await res.text().catch(() => "(unreadable)")
+    throw new Error(`Token refresh failed: HTTP ${res.status} — ${body}`)
+  }
 
   const data = await res.json()
   return {
