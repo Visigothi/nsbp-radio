@@ -208,6 +208,14 @@ Features planned but not yet built, in rough priority order.
 | 6 | **Remote control** | Control playback (play, pause, skip, volume) from the admin panel |
 | 7 | **Historical analytics** | View play history beyond today (7-day, monthly views) |
 
+## Recently Shipped (v1.6.4)
+
+| Feature | Details |
+|---|---|
+| **Spotify logout bug fix** | Fixed random Spotify logouts caused by player being destroyed and recreated on every token refresh. The `useEffect` in `use-spotify-player.ts` previously depended on the full `tokens` object, so `setTokens()` after a refresh triggered cleanup (`player.disconnect()`) and player recreation. Fix: effect now depends on `isConnected` (boolean) only; a `tokensRef` keeps `getOAuthToken` supplied with current tokens without causing re-runs. |
+| **Stale closure fix** | `getOAuthToken` previously captured `tokens` from the closure at player-creation time. It now reads from `tokensRef.current` so it always uses the latest token, including mid-session refreshes. |
+| **Spotify debug logging** | Added `[Spotify]`-prefixed console logs throughout `use-spotify-player.ts`: `getOAuthToken` calls with time-to-expiry, refresh success/failure with new expiry timestamp, `ready`/`not_ready` events, null `player_state_changed` (playback dropped), and `authentication_error`. |
+
 ## Recently Shipped (v1.6.3)
 
 | Feature | Details |
