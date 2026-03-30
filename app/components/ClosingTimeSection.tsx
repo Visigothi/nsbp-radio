@@ -125,7 +125,7 @@ export default function ClosingTimeSection() {
   if (!tokens) return null
 
   return (
-    <div className="mt-4 pt-4" style={{ borderTop: "1px solid rgba(255,157,26,0.15)" }}>
+    <div>
       {/* Section heading */}
       <h2 className="theme-header text-sm font-semibold uppercase tracking-wider mb-3">
         Closing Time

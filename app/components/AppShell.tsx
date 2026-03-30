@@ -89,15 +89,16 @@ export default function AppShell() {
         {/* Left panel — Spotify controls (~60% width on desktop) */}
         {/* Dimmed and non-interactive when an announcement is playing */}
         <div
-          className={`flex-[3] min-h-0 p-6 overflow-y-auto transition-opacity ${
+          className={`flex-[3] min-h-0 overflow-y-auto transition-opacity ${
             isCommercialPlaying ? "opacity-40 pointer-events-none" : ""
           }`}
+          style={{ padding: "var(--layout-inset)" }}
         >
           <SpotifyPanel />
         </div>
 
         {/* Right panel — Announcements, Closing Time, Spotify account (~40% width) */}
-        <div className="flex-[2] min-h-0 p-6 overflow-y-auto">
+        <div className="flex-[2] min-h-0 overflow-y-auto" style={{ padding: "var(--layout-inset)" }}>
           <CommercialPanel />
         </div>
 

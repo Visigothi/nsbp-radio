@@ -425,7 +425,7 @@ export default function SpotifyPanel() {
 
   if (!tokens) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 py-16">
+      <div className="panel-card flex flex-col items-center justify-center gap-4 py-16">
         <div className="text-center space-y-2">
           <p className="text-zinc-300 font-medium">Connect Spotify</p>
           <p className="text-zinc-500 text-sm">
@@ -446,15 +446,17 @@ export default function SpotifyPanel() {
   const progressPct = playerState ? (progress / playerState.duration) * 100 : 0
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* NOW PLAYING heading */}
+    <div className="flex flex-col" style={{ gap: "var(--panel-gap)" }}>
+
+      {/* ── Section 1: Now Playing ─────────────────────────────────────────── */}
+      <div className="panel-card flex flex-col gap-4">
       <h2 className="theme-header text-sm font-semibold uppercase tracking-wider">
         Now Playing
       </h2>
 
       {/* Rounded box: player only — border/bg switch with theme */}
       <div
-        className="rounded-xl p-4 mt-1 flex flex-col gap-4"
+        className="rounded-xl p-4 flex flex-col gap-4"
         style={{ border: "var(--now-playing-border-width, 1px) solid var(--now-playing-border)", background: "var(--now-playing-bg)" }}
       >
       {/* Now playing card — compact horizontal layout, ~5% narrower than track list */}
@@ -563,7 +565,11 @@ export default function SpotifyPanel() {
           )}
         </div>
       )}
-      </div>{/* end orange box */}
+      </div>{/* end now-playing border box */}
+      </div>{/* end Now Playing panel-card */}
+
+      {/* ── Section 2: Playlists / Search ─────────────────────────────────── */}
+      <div className="panel-card flex flex-col gap-4">
 
       {/* ─── Tab bar: Playlists | Search ───
           Two tabs below the Now Playing card. The active tab gets a
@@ -756,7 +762,9 @@ export default function SpotifyPanel() {
           )}
         </>
       )}
-    </div>
+      </div>{/* end Playlists/Search panel-card */}
+
+    </div>{/* end outer column */}
   )
 }
 

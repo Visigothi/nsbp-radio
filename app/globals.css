@@ -16,6 +16,20 @@
   --background: #000000;
   --foreground: #ededed;
 
+  /* ── Layout / panel card ──
+   * --panel-bg        Background of each section card (slightly lighter than page bg).
+   * --layout-inset    Padding from the browser window edge to the panel columns.
+   * --panel-gap       Vertical gap between section cards within a column.
+   * --announcements-list-max-h  Max height of the scrollable announcements file list.
+   *
+   * Override any of these per [data-theme] or swap the .panel-card rule entirely
+   * to re-skin the layout without touching component JSX.
+   */
+  --panel-bg:                   #181818;
+  --layout-inset:               10px;
+  --panel-gap:                  10px;
+  --announcements-list-max-h:   300px;
+
   /* ── North Shore theme (default) — warm orange ── */
   --brand-orange:     #ff9d1a;
   --brand-orange-dim: rgba(255, 157, 26, 0.12);
@@ -133,6 +147,18 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ── Panel card — section container ─────────────────────────────────────── */
+/*
+ * Applied to each major UI section (Now Playing, Playlists/Search,
+ * Announcements, Closing Time). Override --panel-bg or replace this rule
+ * entirely via Figma / Stitch to restyle without touching component JSX.
+ */
+.panel-card {
+  background:    var(--panel-bg);
+  border-radius: 12px;
+  padding:       20px;
 }
 
 /* ── Brand orange hover utility ─────────────────────────────────────────── */

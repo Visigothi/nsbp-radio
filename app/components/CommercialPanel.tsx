@@ -76,7 +76,10 @@ export default function CommercialPanel() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="flex flex-col h-full gap-3">
+    <div className="flex flex-col" style={{ gap: "var(--panel-gap)" }}>
+
+      {/* ── Section 1: Announcements ──────────────────────────────────────── */}
+      <div className="panel-card flex flex-col gap-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="theme-header text-sm font-semibold uppercase tracking-wider">
@@ -151,8 +154,8 @@ export default function CommercialPanel() {
         </div>
       )}
 
-      {/* File list + Closing Time — all in one scrollable area */}
-      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-1.5">
+      {/* File list — constrained height so Closing Time card stays visible */}
+      <div className="flex flex-col gap-1.5 overflow-y-auto" style={{ maxHeight: "var(--announcements-list-max-h)" }}>
         {loading && <p className="text-zinc-500 text-sm">Loading files...</p>}
         {error && <p className="text-red-400 text-sm">{error}</p>}
         {!loading && !error && !accessDenied && files.length === 0 && (
@@ -171,10 +174,14 @@ export default function CommercialPanel() {
             onInterrupt={() => queueCommercial(file, "interrupt")}
           />
         ))}
+      </div>
+      </div>{/* end Announcements panel-card */}
 
-        {/* Closing Time — hardcoded daily closing track */}
+      {/* ── Section 2: Closing Time ───────────────────────────────────────── */}
+      <div className="panel-card">
         <ClosingTimeSection />
       </div>
+
     </div>
   )
 }
