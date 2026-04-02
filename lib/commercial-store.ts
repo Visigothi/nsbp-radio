@@ -12,8 +12,7 @@
  *   "pending track" — a Spotify track the user clicked while an announcement was queued;
  *                     stored here so the engine can play it after the announcement finishes
  *
- * The announcements Drive folder is hardcoded as ANNOUNCEMENTS_FOLDER_ID.
- * There is no user-facing configuration for this — only Mike can change it in code.
+ * The announcements Drive folder ID is read from NEXT_PUBLIC_DEFAULT_DRIVE_FOLDER_ID.
  */
 
 "use client"
@@ -91,7 +90,7 @@ export interface PendingTrack {
 interface CommercialStore {
   // ── State ─────────────────────────────────────────────────────────────────
   files: DriveFile[]                    // All MP3 files loaded from the Drive folder
-  folderId: string                      // The hardcoded Drive folder ID (not user-editable)
+  folderId: string                      // Drive folder ID from NEXT_PUBLIC_DEFAULT_DRIVE_FOLDER_ID
   queued: QueuedCommercial | null       // Currently queued announcement, or null
   status: CommercialStatus              // Current engine state
   playingFile: DriveFile | null         // The file currently playing (shown in Now Playing box)
@@ -156,14 +155,14 @@ interface CommercialStore {
 }
 
 /**
- * Hardcoded Google Drive folder ID for the announcements audio files.
- * This is the folder at:
- *   https://drive.google.com/drive/folders/1fiQBvHdVwm1EymnH-OAOnGFhtjSA0nED
+ * Google Drive folder ID for the announcements audio files.
+ * Set via NEXT_PUBLIC_DEFAULT_DRIVE_FOLDER_ID in .env.local (dev) or
+ * the Vercel environment variables (production).
  *
  * The logged-in Google account must have at least read access to this folder.
  * If access is denied, CommercialPanel shows the "Talk to Mike" error message.
  */
-export const ANNOUNCEMENTS_FOLDER_ID = "1fiQBvHdVwm1EymnH-OAOnGFhtjSA0nED"
+export const ANNOUNCEMENTS_FOLDER_ID = process.env.NEXT_PUBLIC_DEFAULT_DRIVE_FOLDER_ID!
 
 export const useCommercialStore = create<CommercialStore>((set) => ({
   // Initial state
