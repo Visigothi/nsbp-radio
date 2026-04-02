@@ -200,13 +200,13 @@ export async function refreshAccessToken(refreshToken: string): Promise<SpotifyT
 }
 
 /**
- * Removes any Spotify-related data from browser storage.
+ * Clears any Spotify-related state.
  * Called by the Disconnect and Switch Account buttons before clearing
  * the Zustand store and/or redirecting to Spotify's login page.
  */
 export function clearSpotifyTokens(): void {
-  localStorage.removeItem("spotify_tokens")
-  localStorage.removeItem("spotify_code_verifier")
+  // Tokens live in the Zustand store (in-memory only), not in browser storage.
+  // This function exists as a hook for future cleanup if persistence is added.
 }
 
 /** Shape of the Spotify token bundle stored in the Zustand spotify-store. */

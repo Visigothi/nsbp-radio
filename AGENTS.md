@@ -106,8 +106,6 @@ Before running `vercel --prod`:
 | `ALLOWED_EMAILS` | (secret) |
 | `NEXT_PUBLIC_SPOTIFY_CLIENT_ID` | (public) |
 | `NEXT_PUBLIC_SPOTIFY_REDIRECT_URI` | `https://nsbp-radio.vercel.app/spotify-callback` |
-| `NEXT_PUBLIC_GOOGLE_API_KEY` | (public) |
-| `NEXT_PUBLIC_DEFAULT_DRIVE_FOLDER_ID` | (public) |
 | `SUPABASE_URL` | `https://frbqjdmpdashtgropoip.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | (secret) |
 | `ADMIN_EMAIL` | `mike@westcoastbikeparks.ca` (park production) |
